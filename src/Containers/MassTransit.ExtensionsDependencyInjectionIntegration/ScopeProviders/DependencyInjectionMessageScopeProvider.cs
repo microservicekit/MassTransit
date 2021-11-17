@@ -1,11 +1,14 @@
 namespace MassTransit.ExtensionsDependencyInjectionIntegration.ScopeProviders
 {
     using System;
+    using System.Threading.Tasks;
     using Context;
     using GreenPipes;
     using Microsoft.Extensions.DependencyInjection;
+    using Registration;
     using Scoping;
     using Scoping.ConsumerContexts;
+    using Util;
 
 
     public class DependencyInjectionMessageScopeProvider :
@@ -23,14 +26,14 @@ namespace MassTransit.ExtensionsDependencyInjectionIntegration.ScopeProviders
             context.Add("provider", "dependencyInjection");
         }
 
-        public IMessageScopeContext<T> GetScope<T>(ConsumeContext<T> context)
+        public ValueTask<IMessageScopeContext<T>> GetScope<T>(ConsumeContext<T> context)
             where T : class
         {
             if (context.TryGetPayload<IServiceScope>(out var existingServiceScope))
             {
-                existingServiceScope.UpdateScope(context);
+                existingServiceScope.SetCurrentConsumeContext(context);
 
-                return new ExistingMessageScopeContext<T>(context);
+                return new ValueTask<IMessageScopeContext<T>>(new ExistingMessageScopeContext<T>(context));
             }
 
             if (!context.TryGetPayload(out IServiceProvider serviceProvider))
@@ -39,16 +42,20 @@ namespace MassTransit.ExtensionsDependencyInjectionIntegration.ScopeProviders
             var serviceScope = serviceProvider.CreateScope();
             try
             {
-                var scopeContext = new ConsumeContextScope<T>(context, serviceScope, serviceScope.ServiceProvider);
+                var scopeServiceProvider = new DependencyInjectionScopeServiceProvider(serviceScope.ServiceProvider);
 
-                serviceScope.UpdateScope(scopeContext);
+                var scopeContext = new ConsumeContextScope<T>(context, serviceScope, serviceScope.ServiceProvider, scopeServiceProvider);
 
-                return new CreatedMessageScopeContext<IServiceScope, T>(serviceScope, scopeContext);
+                serviceScope.SetCurrentConsumeContext(scopeContext);
+
+                return new ValueTask<IMessageScopeContext<T>>(new CreatedMessageScopeContext<IServiceScope, T>(serviceScope, scopeContext));
             }
-            catch
+            catch (Exception ex)
             {
-                serviceScope.Dispose();
+                if (serviceScope is IAsyncDisposable asyncDisposable)
+                    return ex.DisposeAsync<IMessageScopeContext<T>>(() => asyncDisposable.DisposeAsync());
 
+                serviceScope.Dispose();
                 throw;
             }
         }

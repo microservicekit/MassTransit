@@ -10,9 +10,14 @@
     public class TwoScopeAzureServiceBusTestFixture :
         AzureServiceBusTestFixture
     {
-        public TwoScopeAzureServiceBusTestFixture(string scope = default)
+        public TwoScopeAzureServiceBusTestFixture(string scope)
         {
-            _secondServiceUri = AzureServiceBusEndpointUriCreator.Create(Configuration.ServiceNamespace, scope ?? "MassTransit.Tests.SecondService");
+            _secondServiceUri = AzureServiceBusEndpointUriCreator.Create(Configuration.ServiceNamespace, scope);
+        }
+
+        public TwoScopeAzureServiceBusTestFixture()
+        {
+            _secondServiceUri = AzureServiceBusEndpointUriCreator.Create(Configuration.ServiceNamespace, "MassTransit.Tests.SecondService");
         }
 
         Uri _secondInputQueueAddress;
@@ -116,12 +121,9 @@
 
                 x.Host(_secondServiceUri, h =>
                 {
-                    h.SharedAccessSignature(s =>
+                    h.NamedKey(s =>
                     {
-                        s.KeyName = settings.KeyName;
-                        s.SharedAccessKey = settings.SharedAccessKey;
-                        s.TokenTimeToLive = settings.TokenTimeToLive;
-                        s.TokenScope = settings.TokenScope;
+                        s.NamedKeyCredential = settings.NamedKeyCredential;
                     });
                 });
 

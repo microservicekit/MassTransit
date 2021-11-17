@@ -3,10 +3,15 @@
     using System;
     using System.Collections.Concurrent;
     using System.Collections.Generic;
+    using System.Linq;
+    using System.Threading;
     using System.Threading.Tasks;
+    using ConsumeConfigurators;
+    using Consumers;
     using Context;
+    using Contracts.JobService;
     using GreenPipes;
-    using MassTransit.Contracts.JobService;
+    using MassTransit.Pipeline.ConsumerFactories;
     using Metadata;
 
 
@@ -14,12 +19,19 @@
         IJobService
     {
         readonly ConcurrentDictionary<Guid, JobHandle> _jobs;
+        readonly Dictionary<Type, IJobTypeRegistration> _jobTypes;
+        readonly JobServiceOptions _options;
+        Timer _heartbeat;
 
-        public JobService(Uri instanceAddress)
+        public JobService(IServiceInstanceConfigurator configurator, JobServiceOptions options)
         {
-            InstanceAddress = instanceAddress;
+            _options = options;
+            InstanceAddress = configurator.InstanceAddress;
 
+            _jobTypes = new Dictionary<Type, IJobTypeRegistration>();
             _jobs = new ConcurrentDictionary<Guid, JobHandle>();
+
+            ConfigureSuperviseJobConsumer(configurator.InstanceEndpointConfigurator);
         }
 
         public bool TryGetJob(Guid jobId, out JobHandle jobReference)
@@ -55,10 +67,7 @@
             LogContext.Debug?.Log("Executing job: {JobType} {JobId} ({RetryAttempt})", TypeMetadataCache<T>.ShortName, startJob.JobId,
                 startJob.RetryAttempt);
 
-            ConsumeContext<T> jobConsumeContext = new MessageConsumeContext<T>(context, job);
-            jobConsumeContext.AddOrUpdatePayload<JobContext<T>>(() => jobContext, existing => jobContext);
-
-            var jobTask = jobPipe.Send(jobConsumeContext);
+            var jobTask = jobPipe.Send(jobContext);
 
             var jobHandle = new ConsumerJobHandle<T>(jobContext, jobTask);
 
@@ -67,8 +76,14 @@
             return jobHandle;
         }
 
-        public async Task Stop()
+        public async Task Stop(IBus bus)
         {
+            if (_heartbeat != null)
+            {
+                _heartbeat.Dispose();
+                _heartbeat = null;
+            }
+
             ICollection<JobHandle> pendingJobs = _jobs.Values;
 
             foreach (var jobHandle in pendingJobs)
@@ -89,6 +104,48 @@
                     LogContext.Error?.Log(ex, "Cancel job faulted: {JobId}", jobHandle.JobId);
                 }
             }
+
+            await Task.WhenAll(_jobTypes.Values.Select(x => x.PublishJobInstanceStopped(bus, InstanceAddress))).ConfigureAwait(false);
+        }
+
+        public void RegisterJobType<T>(IReceiveEndpointConfigurator configurator, JobOptions<T> options, Guid jobTypeId)
+            where T : class
+        {
+            if (_jobTypes.ContainsKey(typeof(T)))
+                throw new ConfigurationException($"A job type can only be registered once per service instance: {TypeMetadataCache<T>.ShortName}");
+
+            _jobTypes.Add(typeof(T), new JobTypeRegistration<T>(configurator, options, jobTypeId));
+        }
+
+        public async Task BusStarted(IBus bus)
+        {
+            await Task.WhenAll(_jobTypes.Values.Select(x => x.PublishConcurrentJobLimit(bus, InstanceAddress))).ConfigureAwait(false);
+
+            void PublishHeartbeats(object state)
+            {
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.WhenAll(_jobTypes.Values.Select(x => x.PublishHeartbeat(bus, InstanceAddress))).ConfigureAwait(false);
+                    }
+                    catch (Exception exception)
+                    {
+                        LogContext.Debug?.Log(exception, "Failed to publish heartbeat");
+                    }
+                });
+            }
+
+            _heartbeat = new Timer(PublishHeartbeats, null, _options.HeartbeatInterval, _options.HeartbeatInterval);
+        }
+
+        public Guid GetJobTypeId<T>()
+            where T : class
+        {
+            if (_jobTypes.TryGetValue(typeof(T), out var registration))
+                return registration.JobTypeId;
+
+            throw new ConfigurationException($"The job type was not registered: {TypeMetadataCache<T>.ShortName}");
         }
 
         void Add(JobHandle jobHandle)
@@ -100,6 +157,80 @@
             {
                 TryRemoveJob(jobHandle.JobId, out _);
             });
+        }
+
+        void ConfigureSuperviseJobConsumer(IReceiveEndpointConfigurator configurator)
+        {
+            var consumerFactory = new DelegateConsumerFactory<SuperviseJobConsumer>(() => new SuperviseJobConsumer(this));
+
+            var consumerConfigurator = new ConsumerConfigurator<SuperviseJobConsumer>(consumerFactory, configurator);
+
+            configurator.AddEndpointSpecification(consumerConfigurator);
+        }
+
+
+        interface IJobTypeRegistration
+        {
+            Guid JobTypeId { get; }
+            Task PublishConcurrentJobLimit(IPublishEndpoint publishEndpoint, Uri instanceAddress);
+            Task PublishHeartbeat(IPublishEndpoint publishEndpoint, Uri instanceAddress);
+            Task PublishJobInstanceStopped(IPublishEndpoint publishEndpoint, Uri instanceAddress);
+        }
+
+
+        class JobTypeRegistration<T> :
+            IJobTypeRegistration
+            where T : class
+        {
+            readonly IReceiveEndpointConfigurator _configurator;
+            readonly JobOptions<T> _options;
+
+            public JobTypeRegistration(IReceiveEndpointConfigurator configurator, JobOptions<T> options, Guid jobTypeId)
+            {
+                _configurator = configurator;
+                _options = options;
+                JobTypeId = jobTypeId;
+            }
+
+            public Task PublishConcurrentJobLimit(IPublishEndpoint publishEndpoint, Uri instanceAddress)
+            {
+                LogContext.Debug?.Log("Job Service type: {JobType}", TypeMetadataCache<T>.ShortName);
+
+                return publishEndpoint.Publish<SetConcurrentJobLimit>(new
+                {
+                    JobTypeId,
+                    instanceAddress,
+                    ServiceAddress = _configurator.InputAddress,
+                    _options.ConcurrentJobLimit,
+                    Kind = ConcurrentLimitKind.Configured
+                });
+            }
+
+            public Task PublishHeartbeat(IPublishEndpoint publishEndpoint, Uri instanceAddress)
+            {
+                return publishEndpoint.Publish<SetConcurrentJobLimit>(new
+                {
+                    JobTypeId,
+                    instanceAddress,
+                    ServiceAddress = _configurator.InputAddress,
+                    _options.ConcurrentJobLimit,
+                    Kind = ConcurrentLimitKind.Heartbeat
+                });
+            }
+
+            public Task PublishJobInstanceStopped(IPublishEndpoint publishEndpoint, Uri instanceAddress)
+            {
+                return publishEndpoint.Publish<SetConcurrentJobLimit>(new
+                {
+                    JobTypeId,
+                    instanceAddress,
+                    ServiceAddress = _configurator.InputAddress,
+                    _options.ConcurrentJobLimit,
+                    Kind = ConcurrentLimitKind.Stopped
+                });
+            }
+
+            public Guid JobTypeId { get; }
         }
     }
 }

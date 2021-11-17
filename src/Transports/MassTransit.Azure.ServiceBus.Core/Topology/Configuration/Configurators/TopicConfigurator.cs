@@ -2,8 +2,8 @@
 {
     using System;
     using System.Collections.Generic;
+    using global::Azure.Messaging.ServiceBus.Administration;
     using GreenPipes;
-    using Microsoft.Azure.ServiceBus.Management;
 
 
     public class TopicConfigurator :
@@ -28,35 +28,35 @@
                 yield return this.Failure("AutoDeleteOnIdle", "must be zero, or >= 5:00");
         }
 
-        public TopicDescription GetTopicDescription()
+        public CreateTopicOptions GetCreateTopicOptions()
         {
-            var topicDescription = new TopicDescription(FullPath);
+            var options = new CreateTopicOptions(FullPath);
 
             if (AutoDeleteOnIdle.HasValue)
-                topicDescription.AutoDeleteOnIdle = AutoDeleteOnIdle.Value;
+                options.AutoDeleteOnIdle = AutoDeleteOnIdle.Value;
 
             if (DefaultMessageTimeToLive.HasValue)
-                topicDescription.DefaultMessageTimeToLive = DefaultMessageTimeToLive.Value;
+                options.DefaultMessageTimeToLive = DefaultMessageTimeToLive.Value;
 
             if (DuplicateDetectionHistoryTimeWindow.HasValue)
-                topicDescription.DuplicateDetectionHistoryTimeWindow = DuplicateDetectionHistoryTimeWindow.Value;
+                options.DuplicateDetectionHistoryTimeWindow = DuplicateDetectionHistoryTimeWindow.Value;
 
             if (EnableBatchedOperations.HasValue)
-                topicDescription.EnableBatchedOperations = EnableBatchedOperations.Value;
+                options.EnableBatchedOperations = EnableBatchedOperations.Value;
 
             if (EnablePartitioning.HasValue)
-                topicDescription.EnablePartitioning = EnablePartitioning.Value;
+                options.EnablePartitioning = EnablePartitioning.Value;
 
             if (MaxSizeInMB.HasValue)
-                topicDescription.MaxSizeInMB = MaxSizeInMB.Value;
+                options.MaxSizeInMegabytes = MaxSizeInMB.Value;
 
             if (RequiresDuplicateDetection.HasValue)
-                topicDescription.RequiresDuplicateDetection = RequiresDuplicateDetection.Value;
+                options.RequiresDuplicateDetection = RequiresDuplicateDetection.Value;
 
             if (!string.IsNullOrWhiteSpace(UserMetadata))
-                topicDescription.UserMetadata = UserMetadata;
+                options.UserMetadata = UserMetadata;
 
-            return topicDescription;
+            return options;
         }
     }
 }

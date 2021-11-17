@@ -1,11 +1,13 @@
 namespace MassTransit.AutofacIntegration.ScopeProviders
 {
     using System;
+    using System.Threading.Tasks;
     using Autofac;
     using Context;
     using GreenPipes;
     using Scoping;
     using Scoping.ConsumerContexts;
+    using Util;
 
 
     public class AutofacMessageScopeProvider :
@@ -22,11 +24,11 @@ namespace MassTransit.AutofacIntegration.ScopeProviders
             _configureScope = configureScope;
         }
 
-        public IMessageScopeContext<T> GetScope<T>(ConsumeContext<T> context)
+        public ValueTask<IMessageScopeContext<T>> GetScope<T>(ConsumeContext<T> context)
             where T : class
         {
             if (context.TryGetPayload<ILifetimeScope>(out _))
-                return new ExistingMessageScopeContext<T>(context);
+                return new ValueTask<IMessageScopeContext<T>>(new ExistingMessageScopeContext<T>(context));
 
             var parentLifetimeScope = _scopeProvider.GetLifetimeScope(context);
 
@@ -40,13 +42,11 @@ namespace MassTransit.AutofacIntegration.ScopeProviders
             {
                 var proxy = new ConsumeContextScope<T>(context, lifetimeScope);
 
-                return new CreatedMessageScopeContext<ILifetimeScope, T>(lifetimeScope, proxy);
+                return new ValueTask<IMessageScopeContext<T>>(new CreatedMessageScopeContext<ILifetimeScope, T>(lifetimeScope, proxy));
             }
-            catch
+            catch (Exception ex)
             {
-                lifetimeScope.Dispose();
-
-                throw;
+                return ex.DisposeAsync<IMessageScopeContext<T>>(() => lifetimeScope.DisposeAsync());
             }
         }
 

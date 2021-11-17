@@ -5,10 +5,10 @@ namespace MassTransit.Transports
     using System.Threading.Tasks;
     using Automatonymous;
     using Context;
+    using EndpointConfigurators;
     using Events;
     using GreenPipes;
     using GreenPipes.Util;
-    using Monitoring.Health;
     using Pipeline;
 
 
@@ -32,6 +32,8 @@ namespace MassTransit.Transports
             _transport = transport;
 
             _started = Util.TaskUtil.GetTask<ReceiveEndpointReady>();
+
+            InputAddress = context.InputAddress;
 
             _startObserver = new StartObserver();
 
@@ -67,22 +69,6 @@ namespace MassTransit.Transports
         public Task Stop(CancellationToken cancellationToken)
         {
             return Stop(false, cancellationToken);
-        }
-
-        public async Task Stop(bool removed, CancellationToken cancellationToken)
-        {
-            LogContext.SetCurrentIfNull(_context.LogContext);
-
-            if (_handle != null)
-            {
-                await _context.EndpointObservers.Stopping(new ReceiveEndpointStoppingEvent(_context.InputAddress, this, removed)).ConfigureAwait(false);
-
-                await _handle.TransportHandle.Stop(cancellationToken).ConfigureAwait(false);
-
-                _handle = null;
-            }
-
-            _context.Reset();
         }
 
         public void Probe(ProbeContext context)
@@ -157,6 +143,22 @@ namespace MassTransit.Transports
             return HealthResult;
         }
 
+        public async Task Stop(bool removed, CancellationToken cancellationToken)
+        {
+            LogContext.SetCurrentIfNull(_context.LogContext);
+
+            if (_handle != null)
+            {
+                await _context.EndpointObservers.Stopping(new ReceiveEndpointStoppingEvent(_context.InputAddress, this, removed)).ConfigureAwait(false);
+
+                await _handle.TransportHandle.Stop(cancellationToken).ConfigureAwait(false);
+
+                _handle = null;
+            }
+
+            _context.Reset();
+        }
+
 
         class Observer :
             IReceiveTransportObserver
@@ -187,6 +189,16 @@ namespace MassTransit.Transports
             public Task Faulted(ReceiveTransportFaulted faulted)
             {
                 return _observer.Faulted(new ReceiveEndpointFaultedEvent(faulted, _endpoint));
+            }
+        }
+
+
+        class ConfiguredObserver :
+            IEndpointConfigurationObserver
+        {
+            public void EndpointConfigured<T>(T configurator)
+                where T : IReceiveEndpointConfigurator
+            {
             }
         }
 

@@ -5,12 +5,11 @@
     using System.Threading.Tasks;
     using Context;
     using Contexts;
+    using global::Azure.Messaging.ServiceBus;
     using GreenPipes;
     using GreenPipes.Agents;
     using GreenPipes.Internals.Extensions;
     using Logging;
-    using Microsoft.Azure.ServiceBus;
-    using Microsoft.Azure.ServiceBus.Core;
     using Transports.Metrics;
     using Util;
 
@@ -21,10 +20,9 @@
     {
         readonly ClientContext _context;
         readonly TaskCompletionSource<bool> _deliveryComplete;
-        readonly IBrokeredMessageReceiver _messageReceiver;
-        bool _stopped;
+        readonly IServiceBusMessageReceiver _messageReceiver;
 
-        public Receiver(ClientContext context, IBrokeredMessageReceiver messageReceiver)
+        public Receiver(ClientContext context, IServiceBusMessageReceiver messageReceiver)
         {
             _context = context;
             _messageReceiver = messageReceiver;
@@ -45,26 +43,27 @@
 
             SetReady();
 
-            return TaskUtil.Completed;
+            return _context.StartAsync();
         }
 
-        protected async Task ExceptionHandler(ExceptionReceivedEventArgs args)
+        protected async Task ExceptionHandler(ProcessErrorEventArgs args)
         {
             var requiresRecycle = args.Exception switch
             {
-                MessageLockLostException _ => false,
                 MessageTimeToLiveExpiredException _ => false,
-                ServiceBusException {IsTransient: true} => false,
+                ServiceBusException { Reason: ServiceBusFailureReason.MessageLockLost } => false,
+                ServiceBusException { Reason: ServiceBusFailureReason.ServiceCommunicationProblem } => true,
+                ServiceBusException { IsTransient: true } => false,
                 _ => true
             };
 
-            if (args.Exception is ServiceBusCommunicationException {IsTransient: true})
+            if (args.Exception is ServiceBusException { IsTransient: true, Reason: ServiceBusFailureReason.ServiceCommunicationProblem })
             {
                 LogContext.Debug?.Log(args.Exception,
                     "Exception on Receiver {InputAddress} during {Action} ActiveDispatchCount({activeDispatch}) ErrorRequiresRecycle({requiresRecycle})",
-                    _context.InputAddress, args.ExceptionReceivedContext.Action, _messageReceiver.ActiveDispatchCount, requiresRecycle);
+                    _context.InputAddress, args.ErrorSource, _messageReceiver.ActiveDispatchCount, requiresRecycle);
             }
-            else if (args.Exception is ObjectDisposedException {ObjectName: "$cbs"})
+            else if (args.Exception is ObjectDisposedException { ObjectName: "$cbs" })
             {
                 // don't log this one
             }
@@ -74,27 +73,14 @@
 
                 logger?.Log(args.Exception,
                     "Exception on Receiver {InputAddress} during {Action} ActiveDispatchCount({activeDispatch}) ErrorRequiresRecycle({requiresRecycle})",
-                    _context.InputAddress, args.ExceptionReceivedContext.Action, _messageReceiver.ActiveDispatchCount, requiresRecycle);
+                    _context.InputAddress, args.ErrorSource, _messageReceiver.ActiveDispatchCount, requiresRecycle);
             }
 
             if (requiresRecycle)
             {
-                if (_deliveryComplete.Task.IsCompleted)
-                    requiresRecycle = false;
-                else
-                    _deliveryComplete.TrySetResult(false);
-
-                if (requiresRecycle)
+                if (_deliveryComplete.TrySetResult(false))
                 {
-                    lock (_context)
-                    {
-                        if (_stopped)
-                            return;
-
-                        _stopped = true;
-                    }
-
-                    await _context.NotifyFaulted(args.Exception, args.ExceptionReceivedContext.EntityPath).ConfigureAwait(false);
+                    await _context.NotifyFaulted(args.Exception, args.EntityPath).ConfigureAwait(false);
 
                     await this.Stop($"Receiver Exception: {args.Exception.Message}").ConfigureAwait(false);
                 }
@@ -135,14 +121,14 @@
             }
         }
 
-        Task OnMessage(IReceiverClient messageReceiver, Message message, CancellationToken cancellationToken)
+        Task OnMessage(ProcessMessageEventArgs messageReceiver, ServiceBusReceivedMessage message, CancellationToken cancellationToken)
         {
             return _messageReceiver.Handle(message, cancellationToken, context => AddReceiveContextPayloads(context, messageReceiver, message));
         }
 
-        void AddReceiveContextPayloads(ReceiveContext receiveContext, IReceiverClient receiverClient, Message message)
+        void AddReceiveContextPayloads(ReceiveContext receiveContext, ProcessMessageEventArgs receiverClient, ServiceBusReceivedMessage message)
         {
-            MessageLockContext lockContext = new ReceiverClientMessageLockContext(receiverClient, message);
+            MessageLockContext lockContext = new ServiceBusMessageLockContext(receiverClient, message);
 
             receiveContext.GetOrAddPayload(() => lockContext);
             receiveContext.GetOrAddPayload(() => _context);

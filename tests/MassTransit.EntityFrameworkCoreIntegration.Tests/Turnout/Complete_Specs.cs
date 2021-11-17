@@ -2,12 +2,12 @@ namespace MassTransit.EntityFrameworkCoreIntegration.Tests.Turnout
 {
     using System;
     using System.Threading.Tasks;
-    using Conductor;
     using Contracts.JobService;
     using Definition;
     using JobService;
     using MassTransit.JobService;
     using MassTransit.JobService.Components.StateMachines;
+    using MassTransit.JobService.Configuration;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.DependencyInjection;
     using NUnit.Framework;
@@ -17,6 +17,13 @@ namespace MassTransit.EntityFrameworkCoreIntegration.Tests.Turnout
     public interface CrunchTheNumbers
     {
         TimeSpan Duration { get; }
+    }
+
+
+    public interface NumbersCrunched
+    {
+        Guid JobId { get; }
+        TimeSpan ElapsedTime { get; }
     }
 
 
@@ -30,6 +37,30 @@ namespace MassTransit.EntityFrameworkCoreIntegration.Tests.Turnout
     }
 
 
+    public class CrunchTheNumbersContainerConsumer :
+        IJobConsumer<CrunchTheNumbers>
+    {
+        readonly IPublishEndpoint _publishEndpoint;
+
+        public CrunchTheNumbersContainerConsumer(IPublishEndpoint publishEndpoint)
+        {
+            _publishEndpoint = publishEndpoint;
+        }
+
+        public async Task Run(JobContext<CrunchTheNumbers> context)
+        {
+            await Task.Delay(context.Job.Duration);
+
+            await _publishEndpoint.Publish<NumbersCrunched>(new
+            {
+                context.JobId,
+                context.ElapsedTime
+            });
+        }
+    }
+
+
+    [Category("Flaky")]
     [TestFixture(typeof(SqlServerTestDbParameters))]
     [TestFixture(typeof(PostgresTestDbParameters))]
     public class Submitting_a_job_to_turnout<T> :
@@ -40,9 +71,7 @@ namespace MassTransit.EntityFrameworkCoreIntegration.Tests.Turnout
         [Order(1)]
         public async Task Should_get_the_job_accepted()
         {
-            var serviceClient = Bus.CreateServiceClient();
-
-            IRequestClient<SubmitJob<CrunchTheNumbers>> requestClient = serviceClient.CreateRequestClient<SubmitJob<CrunchTheNumbers>>();
+            IRequestClient<SubmitJob<CrunchTheNumbers>> requestClient = Bus.CreateRequestClient<SubmitJob<CrunchTheNumbers>>();
 
             Response<JobSubmissionAccepted> response = await requestClient.GetResponse<JobSubmissionAccepted>(new
             {
@@ -105,7 +134,6 @@ namespace MassTransit.EntityFrameworkCoreIntegration.Tests.Turnout
             base.ConfigureInMemoryBus(configurator);
 
             var options = new ServiceInstanceOptions()
-                .EnableInstanceEndpoint()
                 .SetEndpointNameFormatter(KebabCaseEndpointNameFormatter.Instance);
 
             configurator.ServiceInstance(options, instance =>
@@ -190,7 +218,7 @@ namespace MassTransit.EntityFrameworkCoreIntegration.Tests.Turnout
                 .AddDbContext<JobServiceSagaDbContext>(builder => ApplyBuilderOptions(builder))
                 .AddMassTransit(x =>
                 {
-                    x.AddConsumer<CrunchTheNumbersConsumer>();
+                    x.AddConsumer<CrunchTheNumbersContainerConsumer>();
 
                     x.AddRequestClient<SubmitJob<CrunchTheNumbers>>();
 
@@ -241,7 +269,6 @@ namespace MassTransit.EntityFrameworkCoreIntegration.Tests.Turnout
             base.ConfigureInMemoryBus(configurator);
 
             var options = new ServiceInstanceOptions()
-                .EnableInstanceEndpoint()
                 .SetEndpointNameFormatter(KebabCaseEndpointNameFormatter.Instance);
 
             configurator.ServiceInstance(options, instance =>
@@ -255,7 +282,7 @@ namespace MassTransit.EntityFrameworkCoreIntegration.Tests.Turnout
 
                 instance.ReceiveEndpoint(instance.EndpointNameFormatter.Message<CrunchTheNumbers>(), e =>
                 {
-                    e.ConfigureConsumer<CrunchTheNumbersConsumer>(busRegistrationContext);
+                    e.ConfigureConsumer<CrunchTheNumbersContainerConsumer>(busRegistrationContext);
                 });
             });
         }

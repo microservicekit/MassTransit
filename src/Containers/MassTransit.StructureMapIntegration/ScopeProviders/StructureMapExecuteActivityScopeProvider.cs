@@ -1,6 +1,7 @@
 namespace MassTransit.StructureMapIntegration.ScopeProviders
 {
     using System;
+    using System.Threading.Tasks;
     using Courier;
     using GreenPipes;
     using Scoping;
@@ -23,7 +24,7 @@ namespace MassTransit.StructureMapIntegration.ScopeProviders
             _container = container;
         }
 
-        public IExecuteActivityScopeContext<TActivity, TArguments> GetScope(ExecuteContext<TArguments> context)
+        public ValueTask<IExecuteActivityScopeContext<TActivity, TArguments>> GetScope(ExecuteContext<TArguments> context)
         {
             if (context.TryGetPayload<IContainer>(out var existingContainer))
             {
@@ -35,7 +36,8 @@ namespace MassTransit.StructureMapIntegration.ScopeProviders
 
                 ExecuteActivityContext<TActivity, TArguments> activityContext = context.CreateActivityContext(activity);
 
-                return new ExistingExecuteActivityScopeContext<TActivity, TArguments>(activityContext);
+                return new ValueTask<IExecuteActivityScopeContext<TActivity, TArguments>>(
+                    new ExistingExecuteActivityScopeContext<TActivity, TArguments>(activityContext));
             }
 
             var nestedContainer = _container.CreateNestedContainer(context);
@@ -48,7 +50,8 @@ namespace MassTransit.StructureMapIntegration.ScopeProviders
                 ExecuteActivityContext<TActivity, TArguments> activityContext = context.CreateActivityContext(activity);
                 activityContext.UpdatePayload(nestedContainer);
 
-                return new CreatedExecuteActivityScopeContext<IContainer, TActivity, TArguments>(nestedContainer, activityContext);
+                return new ValueTask<IExecuteActivityScopeContext<TActivity, TArguments>>(
+                    new CreatedExecuteActivityScopeContext<IContainer, TActivity, TArguments>(nestedContainer, activityContext));
             }
             catch
             {

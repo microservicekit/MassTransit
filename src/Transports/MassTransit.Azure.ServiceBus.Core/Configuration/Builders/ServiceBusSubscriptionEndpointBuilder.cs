@@ -26,17 +26,16 @@ namespace MassTransit.Azure.ServiceBus.Core.Builders
         {
             var topologyLayout = BuildTopology(_configuration.Settings);
 
-            return new ServiceBusEntityReceiveEndpointContext(_hostConfiguration, _configuration, topologyLayout, ClientContextFactory,
-                _configuration.Settings);
+            return new ServiceBusEntityReceiveEndpointContext(_hostConfiguration, _configuration, topologyLayout, ClientContextFactory);
         }
 
         static BrokerTopology BuildTopology(SubscriptionSettings settings)
         {
             var topologyBuilder = new SubscriptionEndpointBrokerTopologyBuilder();
 
-            topologyBuilder.Topic = topologyBuilder.CreateTopic(settings.TopicDescription);
+            topologyBuilder.Topic = topologyBuilder.CreateTopic(settings.CreateTopicOptions);
 
-            topologyBuilder.CreateSubscription(topologyBuilder.Topic, settings.SubscriptionDescription, settings.Rule, settings.Filter);
+            topologyBuilder.CreateSubscription(topologyBuilder.Topic, settings.CreateSubscriptionOptions, settings.Rule, settings.Filter);
 
             return topologyBuilder.BuildBrokerTopology();
         }

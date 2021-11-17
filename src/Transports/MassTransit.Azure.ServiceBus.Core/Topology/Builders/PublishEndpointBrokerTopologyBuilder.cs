@@ -3,8 +3,7 @@ namespace MassTransit.Azure.ServiceBus.Core.Topology.Builders
     using System;
     using System.Linq;
     using Entities;
-    using Microsoft.Azure.ServiceBus;
-    using Microsoft.Azure.ServiceBus.Management;
+    using global::Azure.Messaging.ServiceBus.Administration;
 
 
     public class PublishEndpointBrokerTopologyBuilder :
@@ -65,11 +64,11 @@ namespace MassTransit.Azure.ServiceBus.Core.Topology.Builders
                     _topic = value;
                     if (_builder.Topic != null)
                     {
-                        var subscriptionName = string.Join("-", value.Topic.TopicDescription.Path.Split('/').Reverse());
-                        var subscriptionDescription = new SubscriptionDescription(_builder.Topic.Topic.TopicDescription.Path,
-                            _topology.FormatSubscriptionName(subscriptionName)) {ForwardTo = value.Topic.TopicDescription.Path};
+                        var subscriptionName = string.Join("-", value.Topic.CreateTopicOptions.Name.Split('/').Reverse());
+                        var createSubscriptionOptions = new CreateSubscriptionOptions(_builder.Topic.Topic.CreateTopicOptions.Name,
+                            _topology.FormatSubscriptionName(subscriptionName)) {ForwardTo = value.Topic.CreateTopicOptions.Name};
 
-                        _builder.CreateTopicSubscription(_builder.Topic, _topic, subscriptionDescription);
+                        _builder.CreateTopicSubscription(_builder.Topic, _topic, createSubscriptionOptions);
                     }
                 }
             }
@@ -79,32 +78,32 @@ namespace MassTransit.Azure.ServiceBus.Core.Topology.Builders
                 return _options.HasFlag(Options.MaintainHierarchy) ? new ImplementedBuilder(this, _topology, _options) : this;
             }
 
-            public TopicHandle CreateTopic(TopicDescription topicDescription)
+            public TopicHandle CreateTopic(CreateTopicOptions createTopicOptions)
             {
-                return _builder.CreateTopic(topicDescription);
+                return _builder.CreateTopic(createTopicOptions);
             }
 
-            public SubscriptionHandle CreateSubscription(TopicHandle topic, SubscriptionDescription subscriptionDescription, RuleDescription rule,
-                Filter filter)
+            public SubscriptionHandle CreateSubscription(TopicHandle topic, CreateSubscriptionOptions createSubscriptionOptions, CreateRuleOptions rule,
+                RuleFilter filter)
             {
-                return _builder.CreateSubscription(topic, subscriptionDescription, rule, filter);
+                return _builder.CreateSubscription(topic, createSubscriptionOptions, rule, filter);
             }
 
-            public TopicSubscriptionHandle CreateTopicSubscription(TopicHandle source, TopicHandle destination, SubscriptionDescription subscriptionDescription)
+            public TopicSubscriptionHandle CreateTopicSubscription(TopicHandle source, TopicHandle destination, CreateSubscriptionOptions createSubscriptionOptions)
             {
-                return _builder.CreateTopicSubscription(source, destination, subscriptionDescription);
+                return _builder.CreateTopicSubscription(source, destination, createSubscriptionOptions);
             }
 
-            public QueueHandle CreateQueue(QueueDescription queueDescription)
+            public QueueHandle CreateQueue(CreateQueueOptions createQueueOptions)
             {
-                return _builder.CreateQueue(queueDescription);
+                return _builder.CreateQueue(createQueueOptions);
             }
 
-            public QueueSubscriptionHandle CreateQueueSubscription(TopicHandle exchange, QueueHandle queue, SubscriptionDescription subscriptionDescription,
-                RuleDescription rule,
-                Filter filter)
+            public QueueSubscriptionHandle CreateQueueSubscription(TopicHandle exchange, QueueHandle queue, CreateSubscriptionOptions createSubscriptionOptions,
+                CreateRuleOptions rule,
+                RuleFilter filter)
             {
-                return _builder.CreateQueueSubscription(exchange, queue, subscriptionDescription, rule, filter);
+                return _builder.CreateQueueSubscription(exchange, queue, createSubscriptionOptions, rule, filter);
             }
         }
     }

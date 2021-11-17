@@ -3,7 +3,7 @@ namespace MassTransit.Azure.ServiceBus.Core.Settings
     using System;
     using System.Collections.Generic;
     using Configuration;
-    using Microsoft.Azure.ServiceBus.Management;
+    using global::Azure.Messaging.ServiceBus.Administration;
     using Topology;
     using Topology.Configurators;
     using Transport;
@@ -33,9 +33,9 @@ namespace MassTransit.Azure.ServiceBus.Core.Settings
 
         public override bool RequiresSession => _queueConfigurator.RequiresSession ?? false;
 
-        public QueueDescription GetQueueDescription()
+        public CreateQueueOptions GetCreateQueueOptions()
         {
-            return _queueConfigurator.GetQueueDescription();
+            return _queueConfigurator.GetCreateQueueOptions();
         }
 
         public override void SelectBasicTier()

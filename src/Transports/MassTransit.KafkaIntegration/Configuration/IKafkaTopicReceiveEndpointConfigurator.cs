@@ -38,6 +38,11 @@
         int ConcurrencyLimit { set; }
 
         /// <summary>
+        /// The maximum number of messages in a single partition before checkpoint (default: 10000)
+        /// </summary>
+        ushort MessageLimit { set; }
+
+        /// <summary>
         /// Set max message count for checkpoint, low message count will decrease throughput (default: 5000)
         /// </summary>
         ushort CheckpointMessageCount { set; }
@@ -146,7 +151,7 @@
         /// Create topic if not exists every time endpoint starts (admin permissions are required).
         /// </summary>
         /// <param name="configure"></param>
-        void CreateIfMissing(Action<KafkaTopicOptions> configure);
+        void CreateIfMissing(Action<KafkaTopicOptions> configure = default);
     }
 
 

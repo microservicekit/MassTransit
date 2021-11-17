@@ -91,6 +91,9 @@
 
         public virtual async Task Start(CancellationToken cancellationToken = default)
         {
+            if(!cancellationToken.CanBeCanceled)
+                cancellationToken = TestCancellationToken;
+
             _received = new BusTestReceiveObserver(TestInactivityTimeout);
             _received.ConnectInactivityObserver(InactivityObserver);
 
@@ -144,6 +147,10 @@
                 _busHandle = null;
                 BusControl = null;
             }
+        }
+
+        public virtual async Task Clean()
+        {
         }
 
         public async Task<ISendEndpoint> GetSendEndpoint(Uri address)

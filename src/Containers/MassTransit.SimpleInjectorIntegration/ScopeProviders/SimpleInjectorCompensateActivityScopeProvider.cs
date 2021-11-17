@@ -1,5 +1,7 @@
 ﻿namespace MassTransit.SimpleInjectorIntegration.ScopeProviders
 {
+    using System;
+    using System.Threading.Tasks;
     using Courier;
     using Courier.Contexts;
     using GreenPipes;
@@ -7,6 +9,7 @@
     using Scoping.CourierContexts;
     using SimpleInjector;
     using SimpleInjector.Lifestyles;
+    using Util;
 
 
     public class SimpleInjectorCompensateActivityScopeProvider<TActivity, TLog> :
@@ -21,7 +24,7 @@
             _container = container;
         }
 
-        public ICompensateActivityScopeContext<TActivity, TLog> GetScope(CompensateContext<TLog> context)
+        public ValueTask<ICompensateActivityScopeContext<TActivity, TLog>> GetScope(CompensateContext<TLog> context)
         {
             if (context.TryGetPayload<Scope>(out var existingScope))
             {
@@ -33,7 +36,8 @@
 
                 CompensateActivityContext<TActivity, TLog> activityContext = context.CreateActivityContext(activity);
 
-                return new ExistingCompensateActivityScopeContext<TActivity, TLog>(activityContext);
+                return new ValueTask<ICompensateActivityScopeContext<TActivity, TLog>>(
+                    new ExistingCompensateActivityScopeContext<TActivity, TLog>(activityContext));
             }
 
             var scope = AsyncScopedLifestyle.BeginScope(_container);
@@ -47,13 +51,12 @@
 
                 CompensateActivityContext<TActivity, TLog> activityContext = scopeContext.CreateActivityContext(activity);
 
-                return new CreatedCompensateActivityScopeContext<Scope, TActivity, TLog>(scope, activityContext);
+                return new ValueTask<ICompensateActivityScopeContext<TActivity, TLog>>(
+                    new CreatedCompensateActivityScopeContext<Scope, TActivity, TLog>(scope, activityContext));
             }
-            catch
+            catch (Exception ex)
             {
-                scope.Dispose();
-
-                throw;
+                return ex.DisposeAsync<ICompensateActivityScopeContext<TActivity, TLog>>(() => scope.DisposeScopeAsync());
             }
         }
 

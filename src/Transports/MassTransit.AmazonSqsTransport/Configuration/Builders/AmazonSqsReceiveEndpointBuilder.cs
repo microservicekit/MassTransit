@@ -30,15 +30,15 @@
         {
             if (_configuration.ConfigureConsumeTopology && options.HasFlag(ConnectPipeOptions.ConfigureConsumeTopology))
             {
-                _configuration.Topology.Consume
-                    .GetMessageTopology<T>()
-                    .Subscribe();
+                IAmazonSqsMessageConsumeTopologyConfigurator<T> topology = _configuration.Topology.Consume.GetMessageTopology<T>();
+                if (topology.ConfigureConsumeTopology)
+                    topology.Subscribe();
             }
 
             return base.ConnectConsumePipe(pipe, options);
         }
 
-        public SqsReceiveEndpointContext CreateReceiveEndpointContext(ReceiveSettings settings)
+        public SqsReceiveEndpointContext CreateReceiveEndpointContext()
         {
             var brokerTopology = BuildTopology(_configuration.Settings);
 
@@ -49,7 +49,7 @@
 
             var errorTransport = CreateErrorTransport(headerAdapter);
 
-            var context = new SqsQueueReceiveEndpointContext(_hostConfiguration, _configuration, brokerTopology, settings);
+            var context = new SqsQueueReceiveEndpointContext(_hostConfiguration, _configuration, brokerTopology);
 
             context.GetOrAddPayload(() => deadLetterTransport);
             context.GetOrAddPayload(() => errorTransport);

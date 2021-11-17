@@ -4,12 +4,14 @@ namespace MassTransit.AmazonSqsTransport.Pipeline
     using System.Collections.Generic;
     using System.Linq;
     using System.Threading.Tasks;
+    using Amazon.SQS;
     using Amazon.SQS.Model;
     using Context;
     using Contexts;
     using GreenPipes;
     using GreenPipes.Agents;
     using GreenPipes.Internals.Extensions;
+    using Internals.Extensions;
     using Topology;
     using Transports;
     using Transports.Metrics;
@@ -46,7 +48,9 @@ namespace MassTransit.AmazonSqsTransport.Pipeline
             _dispatcher = context.CreateReceivePipeDispatcher();
             _dispatcher.ZeroActivity += HandleDeliveryComplete;
 
-            Task.Run(Consume);
+
+            var task = Task.Run(Consume);
+            SetCompleted(task);
         }
 
         long DeliveryMetrics.DeliveryCount => _dispatcher.DispatchCount;
@@ -55,6 +59,8 @@ namespace MassTransit.AmazonSqsTransport.Pipeline
         async Task Consume()
         {
             var executor = new ChannelExecutor(_receiveSettings.PrefetchCount, _receiveSettings.ConcurrentMessageLimit);
+
+            await GetQueueAttributes().ConfigureAwait(false);
 
             SetReady();
 
@@ -68,13 +74,12 @@ namespace MassTransit.AmazonSqsTransport.Pipeline
             catch (Exception exception)
             {
                 LogContext.Error?.Log(exception, "Consume Loop faulted");
+                throw;
             }
             finally
             {
                 await executor.DisposeAsync().ConfigureAwait(false);
             }
-
-            SetCompleted(TaskUtil.Completed);
         }
 
         protected override async Task StopAgent(StopContext context)
@@ -84,6 +89,22 @@ namespace MassTransit.AmazonSqsTransport.Pipeline
             SetCompleted(ActiveAndActualAgentsCompleted(context));
 
             await Completed.ConfigureAwait(false);
+        }
+
+        async Task GetQueueAttributes()
+        {
+            var queueInfo = await _client.GetQueueInfo(_receiveSettings.EntityName).ConfigureAwait(false);
+
+            _receiveSettings.QueueUrl = queueInfo.Url;
+
+            if (queueInfo.Attributes.TryGetValue(QueueAttributeName.VisibilityTimeout, out var value)
+                && int.TryParse(value, out var visibilityTimeout)
+                && visibilityTimeout != _receiveSettings.VisibilityTimeout)
+            {
+                LogContext.Debug?.Log("Using queue visibility timeout of {VisibilityTimeout}", TimeSpan.FromSeconds(visibilityTimeout).ToFriendlyString());
+
+                _receiveSettings.VisibilityTimeout = visibilityTimeout;
+            }
         }
 
         async Task HandleMessage(Message message)
@@ -116,11 +137,22 @@ namespace MassTransit.AmazonSqsTransport.Pipeline
 
             while (!IsStopping)
             {
-                Task<int>[] receiveTasks = Enumerable.Repeat(0, receiveCount).Select(_ => ReceiveMessages(messageLimit, executor)).ToArray();
+                var received = 0;
 
-                int[] counts = await Task.WhenAll(receiveTasks).ConfigureAwait(false);
+                if (_receiveSettings.IsOrdered)
+                {
+                    Task<IList<Message>>[] receiveTasks = Enumerable.Repeat(0, receiveCount).Select(_ => ReceiveOrderedMessages(messageLimit)).ToArray();
+                    IList<Message>[] messages = await Task.WhenAll(receiveTasks).ConfigureAwait(false);
 
-                var received = counts.Sum();
+                    received = await HandleOrderedMessages(executor, messages.SelectMany(x => x)).ConfigureAwait(false);
+                }
+                else
+                {
+                    Task<int>[] receiveTasks = Enumerable.Repeat(0, receiveCount).Select(_ => ReceiveAndHandleMessages(messageLimit, executor)).ToArray();
+                    var counts = await Task.WhenAll(receiveTasks).ConfigureAwait(false);
+
+                    received = counts.Sum();
+                }
 
                 if (received == receiveCount * 10) // ramp up receivers when busy
                     receiveCount = Math.Min(maxReceiveCount, receiveCount + (maxReceiveCount - receiveCount) / 2);
@@ -129,14 +161,50 @@ namespace MassTransit.AmazonSqsTransport.Pipeline
             }
         }
 
-        async Task<int> ReceiveMessages(int messageLimit, ChannelExecutor executor)
+        async Task<IList<Message>> ReceiveOrderedMessages(int messageLimit)
+        {
+            try
+            {
+                return await _client.ReceiveMessages(_receiveSettings.EntityName, messageLimit, _receiveSettings.WaitTimeSeconds, Stopping)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return Array.Empty<Message>();
+            }
+        }
+
+        async Task<int> HandleOrderedMessages(ChannelExecutor executor, IEnumerable<Message> messages)
+        {
+            IEnumerable<IGrouping<string, Message>> messageGroups = messages
+                .GroupBy(x => x.Attributes.TryGetValue(MessageSystemAttributeName.MessageGroupId, out var groupId)
+                    ? groupId
+                    : "")
+                .ToList();
+
+            List<Task> messageGroupTasks = messageGroups.Select(x => HandleOrderedMessageGroup(executor, x)).ToList();
+
+            await Task.WhenAll(messageGroupTasks).ConfigureAwait(false);
+
+            return messageGroups.Sum(x => x.Count());
+        }
+
+        async Task HandleOrderedMessageGroup(ChannelExecutor executor, IEnumerable<Message> messages)
+        {
+            foreach (var message in messages.OrderBy(x => x.Attributes.TryGetValue("SequenceNumber", out var sequenceNumber) ? sequenceNumber : "",
+                SequenceNumberComparer.Instance))
+                await executor.Run(() => HandleMessage(message), Stopping).ConfigureAwait(false);
+        }
+
+        async Task<int> ReceiveAndHandleMessages(int messageLimit, ChannelExecutor executor)
         {
             try
             {
                 IList<Message> messages = await _client.ReceiveMessages(_receiveSettings.EntityName, messageLimit, _receiveSettings.WaitTimeSeconds, Stopping)
                     .ConfigureAwait(false);
 
-                await Task.WhenAll(messages.Select(message => executor.Run(() => HandleMessage(message), Stopping))).ConfigureAwait(false);
+                foreach (var message in messages)
+                    await executor.Push(() => HandleMessage(message), Stopping).ConfigureAwait(false);
 
                 return messages.Count;
             }
@@ -149,9 +217,7 @@ namespace MassTransit.AmazonSqsTransport.Pipeline
         Task HandleDeliveryComplete()
         {
             if (IsStopping)
-            {
                 _deliveryComplete.TrySetResult(true);
-            }
 
             return TaskUtil.Completed;
         }
@@ -168,6 +234,27 @@ namespace MassTransit.AmazonSqsTransport.Pipeline
                 {
                     LogContext.Warning?.Log("Stop canceled waiting for message consumers to complete: {InputAddress}", _context.InputAddress);
                 }
+            }
+        }
+
+
+        class SequenceNumberComparer :
+            IComparer<string>
+        {
+            public static readonly SequenceNumberComparer Instance = new SequenceNumberComparer();
+
+            public int Compare(string x, string y)
+            {
+                if (string.IsNullOrWhiteSpace(x))
+                    throw new ArgumentNullException(nameof(x));
+
+                if (string.IsNullOrWhiteSpace(y))
+                    throw new ArgumentNullException(nameof(y));
+
+                if (x.Length != y.Length)
+                    return x.Length > y.Length ? 1 : -1;
+
+                return string.Compare(x, y, StringComparison.Ordinal);
             }
         }
     }

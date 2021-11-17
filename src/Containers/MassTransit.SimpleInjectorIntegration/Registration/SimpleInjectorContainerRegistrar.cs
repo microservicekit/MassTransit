@@ -6,12 +6,14 @@ namespace MassTransit.SimpleInjectorIntegration.Registration
     using Clients;
     using Courier;
     using Definition;
+    using Futures;
     using MassTransit.Registration;
     using Mediator;
     using Saga;
     using ScopeProviders;
     using Scoping;
     using SimpleInjector;
+    using SimpleInjector.Lifestyles;
 
 
     public class SimpleInjectorContainerRegistrar :
@@ -24,7 +26,7 @@ namespace MassTransit.SimpleInjectorIntegration.Registration
         {
             _container = container;
 
-            _hybridLifestyle = Lifestyle.CreateHybrid(_container.Options.DefaultScopedLifestyle, Lifestyle.Singleton);
+            _hybridLifestyle = Lifestyle.CreateHybrid(_container.Options.DefaultScopedLifestyle ?? new AsyncScopedLifestyle(), Lifestyle.Singleton);
         }
 
         public void RegisterConsumer<T>()
@@ -123,6 +125,19 @@ namespace MassTransit.SimpleInjectorIntegration.Registration
                 _container.RegisterInstance(settings);
         }
 
+        public void RegisterFuture<TFuture>()
+            where TFuture : MassTransitStateMachine<FutureState>
+        {
+            _container.RegisterSingleton<TFuture>();
+        }
+
+        public void RegisterFutureDefinition<TDefinition, TFuture>()
+            where TDefinition : class, IFutureDefinition<TFuture>
+            where TFuture : MassTransitStateMachine<FutureState>
+        {
+            _container.Register<IFutureDefinition<TFuture>, TDefinition>(Lifestyle.Transient);
+        }
+
         public void RegisterRequestClient<T>(RequestTimeout timeout)
             where T : class
         {
@@ -152,6 +167,19 @@ namespace MassTransit.SimpleInjectorIntegration.Registration
 
                 return new ClientFactory(new ScopedClientFactoryContext<Container>(clientFactory, _container))
                     .CreateRequestClient<T>(destinationAddress, timeout);
+            }, _hybridLifestyle);
+        }
+
+        public void RegisterScopedClientFactory()
+        {
+            _container.Register<IScopedClientFactory>(() =>
+            {
+                var clientFactory = GetClientFactory(_container);
+                var consumeContext = _container.GetConsumeContext();
+
+                return consumeContext != null
+                    ? new ScopedClientFactory(clientFactory, consumeContext)
+                    : new ScopedClientFactory(new ClientFactory(new ScopedClientFactoryContext<Container>(clientFactory, _container)), null);
             }, _hybridLifestyle);
         }
 

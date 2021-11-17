@@ -7,7 +7,7 @@ namespace MassTransit.RabbitMqTransport.Configurators
     public class RabbitMqHostConfigurator :
         IRabbitMqHostConfigurator
     {
-        static readonly char[] _pathSeparator = {'/'};
+        static readonly char[] _pathSeparator = { '/' };
         readonly ConfigurationHostSettings _settings;
 
         public RabbitMqHostConfigurator(Uri hostAddress, string connectionName = null)
@@ -22,7 +22,7 @@ namespace MassTransit.RabbitMqTransport.Configurators
                 });
             }
 
-            _settings.VirtualHost = GetVirtualHost(hostAddress);
+            _settings.VirtualHost = Uri.UnescapeDataString(GetVirtualHost(hostAddress));
 
             if (!string.IsNullOrEmpty(connectionName))
                 _settings.ClientProvidedName = connectionName;
@@ -74,6 +74,11 @@ namespace MassTransit.RabbitMqTransport.Configurators
 
                 configure?.Invoke(configurator);
             });
+        }
+
+        public void ContinuationTimeout(TimeSpan timeout)
+        {
+            _settings.ContinuationTimeout = timeout;
         }
 
         public void Heartbeat(ushort requestedHeartbeat)

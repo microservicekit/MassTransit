@@ -3,8 +3,7 @@ namespace MassTransit.Azure.ServiceBus.Core.Settings
     using System;
     using System.Collections.Generic;
     using Configuration;
-    using Microsoft.Azure.ServiceBus;
-    using Microsoft.Azure.ServiceBus.Management;
+    using global::Azure.Messaging.ServiceBus.Administration;
     using Topology;
     using Topology.Configurators;
     using Transport;
@@ -14,23 +13,24 @@ namespace MassTransit.Azure.ServiceBus.Core.Settings
         BaseClientSettings,
         SubscriptionSettings
     {
+        readonly CreateTopicOptions _createTopicOptions;
         readonly SubscriptionConfigurator _subscriptionConfigurator;
-        readonly TopicDescription _topicDescription;
 
         public SubscriptionEndpointSettings(IServiceBusEndpointConfiguration configuration, string topicName, string subscriptionName)
-            : this(configuration, Defaults.CreateTopicDescription(topicName), subscriptionName)
+            : this(configuration, Defaults.GetCreateTopicOptions(topicName), subscriptionName)
         {
         }
 
-        public SubscriptionEndpointSettings(IServiceBusEndpointConfiguration configuration, TopicDescription topicDescription, string subscriptionName)
-            : this(configuration, topicDescription, new SubscriptionConfigurator(topicDescription.Path, subscriptionName))
+        public SubscriptionEndpointSettings(IServiceBusEndpointConfiguration configuration, CreateTopicOptions createTopicOptions, string subscriptionName)
+            : this(configuration, createTopicOptions, new SubscriptionConfigurator(createTopicOptions.Name, subscriptionName))
         {
         }
 
-        SubscriptionEndpointSettings(IServiceBusEndpointConfiguration configuration, TopicDescription topicDescription, SubscriptionConfigurator configurator)
+        SubscriptionEndpointSettings(IServiceBusEndpointConfiguration configuration, CreateTopicOptions createTopicOptions,
+            SubscriptionConfigurator configurator)
             : base(configuration, configurator)
         {
-            _topicDescription = topicDescription;
+            _createTopicOptions = createTopicOptions;
             _subscriptionConfigurator = configurator;
 
             Name = Path = EntityNameFormatter.FormatSubscriptionPath(_subscriptionConfigurator.TopicPath, _subscriptionConfigurator.SubscriptionName);
@@ -38,11 +38,11 @@ namespace MassTransit.Azure.ServiceBus.Core.Settings
 
         public ISubscriptionConfigurator SubscriptionConfigurator => _subscriptionConfigurator;
 
-        TopicDescription SubscriptionSettings.TopicDescription => _topicDescription;
-        SubscriptionDescription SubscriptionSettings.SubscriptionDescription => _subscriptionConfigurator.GetSubscriptionDescription();
+        CreateTopicOptions SubscriptionSettings.CreateTopicOptions => _createTopicOptions;
+        CreateSubscriptionOptions SubscriptionSettings.CreateSubscriptionOptions => _subscriptionConfigurator.GetCreateSubscriptionOptions();
 
-        public RuleDescription Rule { get; set; }
-        public Filter Filter { get; set; }
+        public CreateRuleOptions Rule { get; set; }
+        public RuleFilter Filter { get; set; }
 
         public override TimeSpan LockDuration => _subscriptionConfigurator.LockDuration ?? Defaults.LockDuration;
 

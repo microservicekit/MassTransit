@@ -31,11 +31,12 @@
         {
             if (_configuration.ConfigureConsumeTopology && options.HasFlag(ConnectPipeOptions.ConfigureConsumeTopology))
             {
-                var subscriptionName = GenerateSubscriptionName();
-
-                _configuration.Topology.Consume
-                    .GetMessageTopology<T>()
-                    .Subscribe(subscriptionName);
+                IServiceBusMessageConsumeTopologyConfigurator<T> topology = _configuration.Topology.Consume.GetMessageTopology<T>();
+                if (topology.ConfigureConsumeTopology)
+                {
+                    var subscriptionName = GenerateSubscriptionName();
+                    topology.Subscribe(subscriptionName);
+                }
             }
 
             return base.ConnectConsumePipe(pipe, options);
@@ -45,8 +46,7 @@
         {
             var topologyLayout = BuildTopology(_configuration.Settings);
 
-            return new ServiceBusEntityReceiveEndpointContext(_hostConfiguration, _configuration, topologyLayout, ClientContextFactory,
-                _configuration.Settings);
+            return new ServiceBusEntityReceiveEndpointContext(_hostConfiguration, _configuration, topologyLayout, ClientContextFactory);
         }
 
         string GenerateSubscriptionName()
@@ -61,7 +61,7 @@
         {
             var topologyBuilder = new ReceiveEndpointBrokerTopologyBuilder();
 
-            topologyBuilder.Queue = topologyBuilder.CreateQueue(settings.GetQueueDescription());
+            topologyBuilder.Queue = topologyBuilder.CreateQueue(settings.GetCreateQueueOptions());
 
             _configuration.Topology.Consume.Apply(topologyBuilder);
 

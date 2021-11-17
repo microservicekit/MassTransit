@@ -2,10 +2,10 @@ namespace MassTransit.Azure.Table.Tests.Turnout
 {
     using System;
     using System.Threading.Tasks;
-    using Conductor;
     using Contracts.JobService;
     using Definition;
     using JobService;
+    using JobService.Configuration;
     using NUnit.Framework;
     using Tests;
 
@@ -25,6 +25,9 @@ namespace MassTransit.Azure.Table.Tests.Turnout
         }
     }
 
+
+    [TestFixture]
+    [Category("Flaky")]
     public class Submitting_a_job_to_turnout :
         AzureTableInMemoryTestFixture
     {
@@ -32,9 +35,7 @@ namespace MassTransit.Azure.Table.Tests.Turnout
         [Order(1)]
         public async Task Should_get_the_job_accepted()
         {
-            var serviceClient = Bus.CreateServiceClient();
-
-            IRequestClient<SubmitJob<CrunchTheNumbers>> requestClient = serviceClient.CreateRequestClient<SubmitJob<CrunchTheNumbers>>();
+            IRequestClient<SubmitJob<CrunchTheNumbers>> requestClient = Bus.CreateRequestClient<SubmitJob<CrunchTheNumbers>>();
 
             Response<JobSubmissionAccepted> response = await requestClient.GetResponse<JobSubmissionAccepted>(new
             {
@@ -56,6 +57,13 @@ namespace MassTransit.Azure.Table.Tests.Turnout
         }
 
         [Test]
+        [Order(4)]
+        public async Task Should_have_published_the_job_completed_generic_event()
+        {
+            ConsumeContext<JobCompleted<CrunchTheNumbers>> completed = await _completedT;
+        }
+
+        [Test]
         [Order(3)]
         public async Task Should_have_published_the_job_started_event()
         {
@@ -73,13 +81,13 @@ namespace MassTransit.Azure.Table.Tests.Turnout
         Task<ConsumeContext<JobCompleted>> _completed;
         Task<ConsumeContext<JobSubmitted>> _submitted;
         Task<ConsumeContext<JobStarted>> _started;
+        Task<ConsumeContext<JobCompleted<CrunchTheNumbers>>> _completedT;
 
         protected override void ConfigureInMemoryBus(IInMemoryBusFactoryConfigurator configurator)
         {
             base.ConfigureInMemoryBus(configurator);
 
             var options = new ServiceInstanceOptions()
-                .EnableInstanceEndpoint()
                 .SetEndpointNameFormatter(KebabCaseEndpointNameFormatter.Instance);
 
             configurator.ServiceInstance(options, instance =>
@@ -101,6 +109,7 @@ namespace MassTransit.Azure.Table.Tests.Turnout
             _submitted = Handled<JobSubmitted>(configurator, context => context.Message.JobId == _jobId);
             _started = Handled<JobStarted>(configurator, context => context.Message.JobId == _jobId);
             _completed = Handled<JobCompleted>(configurator, context => context.Message.JobId == _jobId);
+            _completedT = Handled<JobCompleted<CrunchTheNumbers>>(configurator, context => context.Message.JobId == _jobId);
         }
     }
 }

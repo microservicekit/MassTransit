@@ -1,7 +1,7 @@
 namespace MassTransit.Azure.ServiceBus.Core.Settings
 {
     using System;
-    using Microsoft.Azure.ServiceBus.Management;
+    using global::Azure.Messaging.ServiceBus.Administration;
     using Topology;
     using Topology.Builders;
     using Transport;
@@ -11,11 +11,11 @@ namespace MassTransit.Azure.ServiceBus.Core.Settings
         SendSettings,
         IEntityConfigurator
     {
-        readonly QueueDescription _description;
+        readonly CreateQueueOptions _createQueueOptions;
 
-        public QueueSendSettings(QueueDescription description)
+        public QueueSendSettings(CreateQueueOptions createQueueOptions)
         {
-            _description = description;
+            _createQueueOptions = createQueueOptions;
         }
 
         public TimeSpan? AutoDeleteOnIdle
@@ -23,7 +23,7 @@ namespace MassTransit.Azure.ServiceBus.Core.Settings
             set
             {
                 if (value.HasValue)
-                    _description.AutoDeleteOnIdle = value.Value;
+                    _createQueueOptions.AutoDeleteOnIdle = value.Value;
             }
         }
 
@@ -32,7 +32,7 @@ namespace MassTransit.Azure.ServiceBus.Core.Settings
             set
             {
                 if (value.HasValue)
-                    _description.DefaultMessageTimeToLive = value.Value;
+                    _createQueueOptions.DefaultMessageTimeToLive = value.Value;
             }
         }
 
@@ -41,22 +41,22 @@ namespace MassTransit.Azure.ServiceBus.Core.Settings
             set
             {
                 if (value.HasValue)
-                    _description.EnableBatchedOperations = value.Value;
+                    _createQueueOptions.EnableBatchedOperations = value.Value;
             }
         }
 
         public string UserMetadata
         {
-            set => _description.UserMetadata = value;
+            set => _createQueueOptions.UserMetadata = value;
         }
 
-        public string EntityPath => _description.Path;
+        public string EntityPath => _createQueueOptions.Name;
 
         public BrokerTopology GetBrokerTopology()
         {
             var builder = new SendEndpointBrokerTopologyBuilder();
 
-            builder.Queue = builder.CreateQueue(_description);
+            builder.Queue = builder.CreateQueue(_createQueueOptions);
 
             return builder.BuildBrokerTopology();
         }

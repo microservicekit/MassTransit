@@ -2,9 +2,8 @@ namespace MassTransit.Azure.ServiceBus.Core.Topology.Specifications
 {
     using System.Collections.Generic;
     using Builders;
+    using global::Azure.Messaging.ServiceBus.Administration;
     using GreenPipes;
-    using Microsoft.Azure.ServiceBus;
-    using Microsoft.Azure.ServiceBus.Management;
 
 
     /// <summary>
@@ -13,16 +12,16 @@ namespace MassTransit.Azure.ServiceBus.Core.Topology.Specifications
     public class SubscriptionConsumeTopologySpecification :
         IServiceBusConsumeTopologySpecification
     {
-        readonly Filter _filter;
-        readonly RuleDescription _rule;
-        readonly SubscriptionDescription _subscriptionDescription;
-        readonly TopicDescription _topicDescription;
+        readonly CreateSubscriptionOptions _createSubscriptionOptions;
+        readonly CreateTopicOptions _createTopicOptions;
+        readonly RuleFilter _filter;
+        readonly CreateRuleOptions _rule;
 
-        public SubscriptionConsumeTopologySpecification(TopicDescription topicDescription, SubscriptionDescription subscriptionDescription,
-            RuleDescription rule, Filter filter)
+        public SubscriptionConsumeTopologySpecification(CreateTopicOptions createTopicOptions, CreateSubscriptionOptions createSubscriptionOptions,
+            CreateRuleOptions rule, RuleFilter filter)
         {
-            _topicDescription = topicDescription;
-            _subscriptionDescription = subscriptionDescription;
+            _createTopicOptions = createTopicOptions;
+            _createSubscriptionOptions = createSubscriptionOptions;
             _rule = rule;
             _filter = filter;
         }
@@ -34,13 +33,11 @@ namespace MassTransit.Azure.ServiceBus.Core.Topology.Specifications
 
         public void Apply(IReceiveEndpointBrokerTopologyBuilder builder)
         {
-            var topic = builder.CreateTopic(_topicDescription);
+            var topic = builder.CreateTopic(_createTopicOptions);
 
-            var subscriptionDescription = _subscriptionDescription;
+            _createSubscriptionOptions.ForwardTo = builder.Queue.Queue.CreateQueueOptions.Name;
 
-            subscriptionDescription.ForwardTo = builder.Queue.Queue.QueueDescription.Path;
-
-            builder.CreateQueueSubscription(topic, builder.Queue, subscriptionDescription, _rule, _filter);
+            builder.CreateQueueSubscription(topic, builder.Queue, _createSubscriptionOptions, _rule, _filter);
         }
     }
 }

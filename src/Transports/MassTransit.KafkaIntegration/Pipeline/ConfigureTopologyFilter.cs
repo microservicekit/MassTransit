@@ -46,14 +46,17 @@ namespace MassTransit.KafkaIntegration.Pipeline
             var client = new AdminClientBuilder(_config).Build();
             try
             {
-                var options = new CreateTopicsOptions {RequestTimeout = TimeSpan.FromSeconds(30)};
+                var options = new CreateTopicsOptions {RequestTimeout = _options.RequestTimeout};
                 LogContext.Debug?.Log("Creating topic: {Topic}", _specification.Name);
                 await client.CreateTopicsAsync(new[] {_specification}, options).ConfigureAwait(false);
             }
             catch (CreateTopicsException e)
             {
-                EnabledLogger? logger = e.Error.IsFatal ? LogContext.Critical : LogContext.Error;
-                logger?.Log("An error occured creating topics. {Errors}", string.Join(", ", e.Results.Select(x => $"{x.Topic}:{x.Error.Reason}")));
+                if (!e.Results.All(x => x.Error.Reason.EndsWith("already exists.", StringComparison.OrdinalIgnoreCase)))
+                {
+                    EnabledLogger? logger = e.Error.IsFatal ? LogContext.Error : LogContext.Debug;
+                    logger?.Log("An error occured creating topics. {Errors}", string.Join(", ", e.Results.Select(x => $"{x.Topic}:{x.Error.Reason}")));
+                }
             }
             finally
             {

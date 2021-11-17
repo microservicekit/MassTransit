@@ -15,7 +15,7 @@ namespace MassTransit.EntityFrameworkCoreIntegration.Tests.Migrations.JobService
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "3.1.5")
+                .HasAnnotation("ProductVersion", "3.1.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128)
                 .HasAnnotation("SqlServer:ValueGenerationStrategy", SqlServerValueGenerationStrategy.IdentityColumn);
 
@@ -127,6 +127,9 @@ namespace MassTransit.EntityFrameworkCoreIntegration.Tests.Migrations.JobService
 
                     b.Property<int>("CurrentState")
                         .HasColumnType("int");
+
+                    b.Property<string>("Instances")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int?>("OverrideJobLimit")
                         .HasColumnType("int");

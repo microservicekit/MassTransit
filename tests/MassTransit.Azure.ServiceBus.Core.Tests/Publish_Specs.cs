@@ -101,18 +101,10 @@ namespace MassTransit.Azure.ServiceBus.Core.Tests
 
 
     [TestFixture]
+    [Category("Flaky")]
     public class Publishing_an_encrypted_message_to_an_endpoint :
         AzureServiceBusTestFixture
     {
-        [Test]
-        [Explicit]
-        public void Should_return_a_wonderful_breakdown_of_the_guts_inside_it()
-        {
-            var result = Bus.GetProbeResult();
-
-            Console.WriteLine(result.ToJsonString());
-        }
-
         [Test]
         public async Task Should_succeed()
         {
@@ -179,6 +171,7 @@ namespace MassTransit.Azure.ServiceBus.Core.Tests
 
 
     [TestFixture]
+    [Explicit]
     public class Publishing_a_message_to_an_remove_subscriptions_endpoint :
         AsyncTestFixture
     {
@@ -202,12 +195,9 @@ namespace MassTransit.Azure.ServiceBus.Core.Tests
                 BusTestFixture.ConfigureBusDiagnostics(x);
                 x.Host(serviceUri, h =>
                 {
-                    h.SharedAccessSignature(s =>
+                    h.NamedKey(s =>
                     {
-                        s.KeyName = settings.KeyName;
-                        s.SharedAccessKey = settings.SharedAccessKey;
-                        s.TokenTimeToLive = settings.TokenTimeToLive;
-                        s.TokenScope = settings.TokenScope;
+                        s.NamedKeyCredential = settings.NamedKeyCredential;
                     });
                 });
 
@@ -217,7 +207,7 @@ namespace MassTransit.Azure.ServiceBus.Core.Tests
 
                     e.Handler<PingMessage>(async context =>
                     {
-                        await Task.Delay(TimeSpan.FromSeconds(120));
+                        await Task.Delay(TimeSpan.FromSeconds(1));
 
                         handled.TrySetResult(context.Message);
                     });

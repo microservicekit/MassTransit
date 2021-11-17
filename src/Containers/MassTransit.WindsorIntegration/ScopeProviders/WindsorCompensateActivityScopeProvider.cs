@@ -1,6 +1,7 @@
 namespace MassTransit.WindsorIntegration.ScopeProviders
 {
     using System;
+    using System.Threading.Tasks;
     using Castle.MicroKernel;
     using Courier;
     using Courier.Contexts;
@@ -21,7 +22,7 @@ namespace MassTransit.WindsorIntegration.ScopeProviders
             _kernel = kernel;
         }
 
-        public ICompensateActivityScopeContext<TActivity, TLog> GetScope(CompensateContext<TLog> context)
+        public ValueTask<ICompensateActivityScopeContext<TActivity, TLog>> GetScope(CompensateContext<TLog> context)
         {
             if (context.TryGetPayload<IKernel>(out var kernel))
             {
@@ -31,7 +32,8 @@ namespace MassTransit.WindsorIntegration.ScopeProviders
 
                 CompensateActivityContext<TActivity, TLog> activityContext = context.CreateActivityContext(activity);
 
-                return new ExistingCompensateActivityScopeContext<TActivity, TLog>(activityContext, ReleaseComponent);
+                return new ValueTask<ICompensateActivityScopeContext<TActivity, TLog>>(
+                    new ExistingCompensateActivityScopeContext<TActivity, TLog>(activityContext, ReleaseComponent));
             }
 
             var scope = _kernel.CreateNewOrUseExistingMessageScope();
@@ -45,7 +47,8 @@ namespace MassTransit.WindsorIntegration.ScopeProviders
 
                 CompensateActivityContext<TActivity, TLog> activityContext = scopeContext.CreateActivityContext(activity);
 
-                return new CreatedCompensateActivityScopeContext<IDisposable, TActivity, TLog>(scope, activityContext, ReleaseComponent);
+                return new ValueTask<ICompensateActivityScopeContext<TActivity, TLog>>(
+                    new CreatedCompensateActivityScopeContext<IDisposable, TActivity, TLog>(scope, activityContext, ReleaseComponent));
             }
             catch
             {

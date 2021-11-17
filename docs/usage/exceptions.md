@@ -53,6 +53,8 @@ public class SubmitOrderConsumer :
 With this consumer, an `ADOException` can be thrown, say there is a deadlock or the SQL server is unavailable. In this case, the operation should be retried before moving the message to the error queue. This can be configured on the receive endpoint or the consumer. Shown below is a retry policy which attempts to deliver the message to a consumer five times before throwing the exception back up the pipeline.
 
 ```cs
+using GreenPipes; // for call to Immediate
+
 var sessionFactory = CreateSessionFactory();
 
 var busControl = Bus.Factory.CreateUsingRabbitMq(cfg =>
@@ -159,10 +161,12 @@ var busControl = Bus.Factory.CreateUsingRabbitMq(cfg =>
     cfg.Host("rabbitmq://localhost/");
 
     cfg.UseMessageScheduler(new Uri("rabbitmq://localhost/quartz"));
+    // cfg.UseDelayedMessageScheduler(); // use this, if you are using delayed scheduler
 
     cfg.ReceiveEndpoint("submit-order", e =>
     {
         e.UseScheduledRedelivery(r => r.Intervals(TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(30)));
+        // e.UseDelayedRedelivery(r => r.Intervals(TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(30))); // use this, if you are using delayed scheduler
         e.UseMessageRetry(r => r.Immediate(5));
         e.Consumer(() => new SubmitOrderConsumer(sessionFactory));
     });

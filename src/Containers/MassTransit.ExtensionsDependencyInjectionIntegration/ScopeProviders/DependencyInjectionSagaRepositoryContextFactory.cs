@@ -7,6 +7,7 @@ namespace MassTransit.ExtensionsDependencyInjectionIntegration.ScopeProviders
     using Context;
     using GreenPipes;
     using Microsoft.Extensions.DependencyInjection;
+    using Registration;
     using Saga;
 
 
@@ -56,7 +57,7 @@ namespace MassTransit.ExtensionsDependencyInjectionIntegration.ScopeProviders
 
             if (context.TryGetPayload<IServiceScope>(out var existingScope))
             {
-                existingScope.UpdateScope(context);
+                existingScope.SetCurrentConsumeContext(context);
 
                 context.GetOrAddPayload(() => existingScope.ServiceProvider.GetService<IStateMachineActivityFactory>()
                     ?? DependencyInjectionStateMachineActivityFactory.Instance);
@@ -68,22 +69,31 @@ namespace MassTransit.ExtensionsDependencyInjectionIntegration.ScopeProviders
 
             async Task CreateScope()
             {
-                using var serviceScope = serviceProvider.CreateScope();
+                var serviceScope = serviceProvider.CreateScope();
+                try
+                {
+                    var scopeServiceProvider = new DependencyInjectionScopeServiceProvider(serviceScope.ServiceProvider);
 
-                var scopeServiceProvider = serviceScope.ServiceProvider;
+                    var scopeContext = new ConsumeContextScope<T>(context, serviceScope, serviceScope.ServiceProvider, scopeServiceProvider);
 
-                var scopeContext = new ConsumeContextScope<T>(context, serviceScope, scopeServiceProvider);
+                    serviceScope.SetCurrentConsumeContext(scopeContext);
 
-                serviceScope.UpdateScope(scopeContext);
+                    var activityFactory = serviceScope.ServiceProvider.GetService<IStateMachineActivityFactory>()
+                        ?? DependencyInjectionStateMachineActivityFactory.Instance;
 
-                var activityFactory = scopeServiceProvider.GetService<IStateMachineActivityFactory>()
-                    ?? DependencyInjectionStateMachineActivityFactory.Instance;
+                    var consumeContextScope = new ConsumeContextScope<T>(scopeContext, activityFactory);
 
-                var consumeContextScope = new ConsumeContextScope<T>(scopeContext, activityFactory);
+                    var factory = serviceScope.ServiceProvider.GetRequiredService<ISagaRepositoryContextFactory<TSaga>>();
 
-                var factory = scopeServiceProvider.GetRequiredService<ISagaRepositoryContextFactory<TSaga>>();
-
-                await send(consumeContextScope, factory).ConfigureAwait(false);
+                    await send(consumeContextScope, factory).ConfigureAwait(false);
+                }
+                finally
+                {
+                    if (serviceScope is IAsyncDisposable asyncDisposable)
+                        await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+                    else
+                        serviceScope.Dispose();
+                }
             }
 
             return CreateScope();

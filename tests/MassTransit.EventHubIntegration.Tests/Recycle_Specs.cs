@@ -3,7 +3,7 @@ namespace MassTransit.EventHubIntegration.Tests
     using System;
     using System.Linq;
     using System.Threading.Tasks;
-    using GreenPipes;
+    using Contracts;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.DependencyInjection.Extensions;
     using Microsoft.Extensions.Logging;
@@ -24,8 +24,8 @@ namespace MassTransit.EventHubIntegration.Tests
         {
             const int numOfTries = 2;
 
-            TaskCompletionSource<ConsumeContext<EventHubMessage>>[] taskCompletionSources = Enumerable.Range(0, numOfTries)
-                .Select(x => GetTask<ConsumeContext<EventHubMessage>>())
+            TaskCompletionSource<ConsumeContext<BatchEventHubMessage>>[] taskCompletionSources = Enumerable.Range(0, numOfTries)
+                .Select(x => GetTask<ConsumeContext<BatchEventHubMessage>>())
                 .ToArray();
             var services = new ServiceCollection();
             services.AddSingleton(taskCompletionSources);
@@ -70,44 +70,9 @@ namespace MassTransit.EventHubIntegration.Tests
 
                     try
                     {
-                        var correlationId = NewId.NextGuid();
-                        var conversationId = NewId.NextGuid();
-                        var initiatorId = NewId.NextGuid();
-                        var messageId = NewId.NextGuid();
-                        await producer.Produce<EventHubMessage>(new
-                            {
-                                Text = "text",
-                                Index = i
-                            }, Pipe.Execute<SendContext>(context =>
-                            {
-                                context.CorrelationId = correlationId;
-                                context.MessageId = messageId;
-                                context.InitiatorId = initiatorId;
-                                context.ConversationId = conversationId;
-                                context.Headers.Set("Special", new
-                                {
-                                    Key = "Hello",
-                                    Value = "World"
-                                });
-                            }),
-                            TestCancellationToken);
+                        await producer.Produce<BatchEventHubMessage>(new { Index = i }, TestCancellationToken);
 
-                        TaskCompletionSource<ConsumeContext<EventHubMessage>> taskCompletionSource = taskCompletionSources[i];
-                        ConsumeContext<EventHubMessage> result = await taskCompletionSource.Task;
-
-                        Assert.AreEqual("text", result.Message.Text);
-                        Assert.That(result.SourceAddress, Is.EqualTo(new Uri("loopback://localhost/")));
-                        Assert.That(result.DestinationAddress,
-                            Is.EqualTo(new Uri($"loopback://localhost/{EventHubEndpointAddress.PathPrefix}/{Configuration.EventHubName}")));
-                        Assert.That(result.MessageId, Is.EqualTo(messageId));
-                        Assert.That(result.CorrelationId, Is.EqualTo(correlationId));
-                        Assert.That(result.InitiatorId, Is.EqualTo(initiatorId));
-                        Assert.That(result.ConversationId, Is.EqualTo(conversationId));
-
-                        var headerType = result.Headers.Get<HeaderType>("Special");
-                        Assert.That(headerType, Is.Not.Null);
-                        Assert.That(headerType.Key, Is.EqualTo("Hello"));
-                        Assert.That(headerType.Value, Is.EqualTo("World"));
+                        await taskCompletionSources[i].Task;
                     }
                     finally
                     {
@@ -127,33 +92,19 @@ namespace MassTransit.EventHubIntegration.Tests
 
 
         class EventHubMessageConsumer :
-            IConsumer<EventHubMessage>
+            IConsumer<BatchEventHubMessage>
         {
-            readonly TaskCompletionSource<ConsumeContext<EventHubMessage>>[] _taskCompletionSource;
+            readonly TaskCompletionSource<ConsumeContext<BatchEventHubMessage>>[] _taskCompletionSource;
 
-            public EventHubMessageConsumer(TaskCompletionSource<ConsumeContext<EventHubMessage>>[] taskCompletionSource)
+            public EventHubMessageConsumer(TaskCompletionSource<ConsumeContext<BatchEventHubMessage>>[] taskCompletionSource)
             {
                 _taskCompletionSource = taskCompletionSource;
             }
 
-            public async Task Consume(ConsumeContext<EventHubMessage> context)
+            public async Task Consume(ConsumeContext<BatchEventHubMessage> context)
             {
                 _taskCompletionSource[context.Message.Index].TrySetResult(context);
             }
-        }
-
-
-        public interface HeaderType
-        {
-            string Key { get; }
-            string Value { get; }
-        }
-
-
-        public interface EventHubMessage
-        {
-            int Index { get; }
-            string Text { get; }
         }
     }
 }

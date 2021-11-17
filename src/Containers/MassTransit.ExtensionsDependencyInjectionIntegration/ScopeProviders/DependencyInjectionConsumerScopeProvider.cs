@@ -1,12 +1,15 @@
 namespace MassTransit.ExtensionsDependencyInjectionIntegration.ScopeProviders
 {
     using System;
+    using System.Threading.Tasks;
     using Context;
     using GreenPipes;
     using Metadata;
     using Microsoft.Extensions.DependencyInjection;
+    using Registration;
     using Scoping;
     using Scoping.ConsumerContexts;
+    using Util;
 
 
     public class DependencyInjectionConsumerScopeProvider :
@@ -24,13 +27,13 @@ namespace MassTransit.ExtensionsDependencyInjectionIntegration.ScopeProviders
             context.Add("provider", "dependencyInjection");
         }
 
-        IConsumerScopeContext IConsumerScopeProvider.GetScope(ConsumeContext context)
+        public ValueTask<IConsumerScopeContext> GetScope(ConsumeContext context)
         {
             if (context.TryGetPayload<IServiceScope>(out var existingServiceScope))
             {
-                existingServiceScope.UpdateScope(context);
+                existingServiceScope.SetCurrentConsumeContext(context);
 
-                return new ExistingConsumerScopeContext(context);
+                return new ValueTask<IConsumerScopeContext>(new ExistingConsumerScopeContext(context));
             }
 
             if (!context.TryGetPayload(out IServiceProvider serviceProvider))
@@ -39,25 +42,31 @@ namespace MassTransit.ExtensionsDependencyInjectionIntegration.ScopeProviders
             var serviceScope = serviceProvider.CreateScope();
             try
             {
-                var scopeContext = new ConsumeContextScope(context, serviceScope, serviceScope.ServiceProvider);
+                var scopeServiceProvider = new DependencyInjectionScopeServiceProvider(serviceScope.ServiceProvider);
 
-                serviceScope.UpdateScope(scopeContext);
+                var scopeContext = new ConsumeContextScope(context, serviceScope, serviceScope.ServiceProvider, scopeServiceProvider);
 
-                return new CreatedConsumerScopeContext<IServiceScope>(serviceScope, scopeContext);
+                serviceScope.SetCurrentConsumeContext(scopeContext);
+
+                return new ValueTask<IConsumerScopeContext>(new CreatedConsumerScopeContext<IServiceScope>(serviceScope, scopeContext));
             }
-            catch
+            catch (Exception ex)
             {
-                serviceScope.Dispose();
+                if (serviceScope is IAsyncDisposable asyncDisposable)
+                    return ex.DisposeAsync<IConsumerScopeContext>(() => asyncDisposable.DisposeAsync());
 
+                serviceScope.Dispose();
                 throw;
             }
         }
 
-        IConsumerScopeContext<TConsumer, T> IConsumerScopeProvider.GetScope<TConsumer, T>(ConsumeContext<T> context)
+        public ValueTask<IConsumerScopeContext<TConsumer, T>> GetScope<TConsumer, T>(ConsumeContext<T> context)
+            where TConsumer : class
+            where T : class
         {
             if (context.TryGetPayload<IServiceScope>(out var existingServiceScope))
             {
-                existingServiceScope.UpdateScope(context);
+                existingServiceScope.SetCurrentConsumeContext(context);
 
                 var consumer = existingServiceScope.ServiceProvider.GetService<TConsumer>();
                 if (consumer == null)
@@ -65,7 +74,7 @@ namespace MassTransit.ExtensionsDependencyInjectionIntegration.ScopeProviders
 
                 var consumerContext = new ConsumerConsumeContextScope<TConsumer, T>(context, consumer);
 
-                return new ExistingConsumerScopeContext<TConsumer, T>(consumerContext);
+                return new ValueTask<IConsumerScopeContext<TConsumer, T>>(new ExistingConsumerScopeContext<TConsumer, T>(consumerContext));
             }
 
             if (!context.TryGetPayload(out IServiceProvider serviceProvider))
@@ -74,22 +83,27 @@ namespace MassTransit.ExtensionsDependencyInjectionIntegration.ScopeProviders
             var serviceScope = serviceProvider.CreateScope();
             try
             {
-                var scopeContext = new ConsumeContextScope<T>(context, serviceScope, serviceScope.ServiceProvider);
+                var scopeServiceProvider = new DependencyInjectionScopeServiceProvider(serviceScope.ServiceProvider);
 
-                serviceScope.UpdateScope(scopeContext);
+                var scopeContext = new ConsumeContextScope<T>(context, serviceScope, serviceScope.ServiceProvider, scopeServiceProvider);
 
-                var consumer = serviceScope.ServiceProvider.GetService<TConsumer>();
+                serviceScope.SetCurrentConsumeContext(scopeContext);
+
+                var consumer = scopeServiceProvider.GetService<TConsumer>();
                 if (consumer == null)
                     throw new ConsumerException($"Unable to resolve consumer type '{TypeMetadataCache<TConsumer>.ShortName}'.");
 
                 var consumerContext = new ConsumerConsumeContextScope<TConsumer, T>(scopeContext, consumer);
 
-                return new CreatedConsumerScopeContext<IServiceScope, TConsumer, T>(serviceScope, consumerContext);
+                return new ValueTask<IConsumerScopeContext<TConsumer, T>>(
+                    new CreatedConsumerScopeContext<IServiceScope, TConsumer, T>(serviceScope, consumerContext));
             }
-            catch
+            catch (Exception ex)
             {
-                serviceScope.Dispose();
+                if (serviceScope is IAsyncDisposable asyncDisposable)
+                    return ex.DisposeAsync<IConsumerScopeContext<TConsumer, T>>(() => asyncDisposable.DisposeAsync());
 
+                serviceScope.Dispose();
                 throw;
             }
         }

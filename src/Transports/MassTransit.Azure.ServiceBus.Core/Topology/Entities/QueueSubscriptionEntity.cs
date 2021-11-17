@@ -2,8 +2,7 @@ namespace MassTransit.Azure.ServiceBus.Core.Topology.Entities
 {
     using System.Collections.Generic;
     using System.Linq;
-    using Microsoft.Azure.ServiceBus;
-    using Microsoft.Azure.ServiceBus.Management;
+    using global::Azure.Messaging.ServiceBus.Administration;
 
 
     public class QueueSubscriptionEntity :
@@ -14,14 +13,14 @@ namespace MassTransit.Azure.ServiceBus.Core.Topology.Entities
         readonly SubscriptionEntity _subscription;
         readonly TopicEntity _topic;
 
-        public QueueSubscriptionEntity(long id, long subscriptionId, TopicEntity topic, QueueEntity queue, SubscriptionDescription subscriptionDescription,
-            RuleDescription rule = null, Filter filter = null)
+        public QueueSubscriptionEntity(long id, long subscriptionId, TopicEntity topic, QueueEntity queue, CreateSubscriptionOptions createSubscriptionOptions,
+            CreateRuleOptions rule = null, RuleFilter filter = null)
         {
             Id = id;
 
             _topic = topic;
             _queue = queue;
-            _subscription = new SubscriptionEntity(subscriptionId, topic, subscriptionDescription, rule, filter);
+            _subscription = new SubscriptionEntity(subscriptionId, topic, createSubscriptionOptions, rule, filter);
         }
 
         public static IEqualityComparer<QueueSubscriptionEntity> EntityComparer { get; } = new QueueSubscriptionEntityEqualityComparer();
@@ -39,9 +38,9 @@ namespace MassTransit.Azure.ServiceBus.Core.Topology.Entities
             return string.Join(", ",
                 new[]
                 {
-                    $"topic: {_topic.TopicDescription.Path}",
-                    $"queue: {_queue.QueueDescription.Path}",
-                    $"subscription: {_subscription.SubscriptionDescription.SubscriptionName}"
+                    $"topic: {_topic.CreateTopicOptions.Name}",
+                    $"queue: {_queue.CreateQueueOptions.Name}",
+                    $"subscription: {_subscription.CreateSubscriptionOptions.SubscriptionName}"
                 }.Where(x => !string.IsNullOrWhiteSpace(x)));
         }
 
@@ -99,16 +98,16 @@ namespace MassTransit.Azure.ServiceBus.Core.Topology.Entities
                 if (x.GetType() != y.GetType())
                     return false;
 
-                return string.Equals(x.Subscription.SubscriptionDescription.SubscriptionName, y.Subscription.SubscriptionDescription.SubscriptionName)
-                    && string.Equals(x.Subscription.SubscriptionDescription.TopicPath, y.Subscription.SubscriptionDescription.TopicPath)
-                    && string.Equals(x.Destination.QueueDescription.Path, y.Destination.QueueDescription.Path);
+                return string.Equals(x.Subscription.CreateSubscriptionOptions.SubscriptionName, y.Subscription.CreateSubscriptionOptions.SubscriptionName)
+                    && string.Equals(x.Subscription.CreateSubscriptionOptions.TopicName, y.Subscription.CreateSubscriptionOptions.TopicName)
+                    && string.Equals(x.Destination.CreateQueueOptions.Name, y.Destination.CreateQueueOptions.Name);
             }
 
             public int GetHashCode(QueueSubscriptionEntity obj)
             {
-                var hashCode = obj.Subscription.SubscriptionDescription.SubscriptionName.GetHashCode();
-                hashCode = (hashCode * 397) ^ obj.Subscription.SubscriptionDescription.TopicPath.GetHashCode();
-                hashCode = (hashCode * 397) ^ obj.Destination.QueueDescription.Path.GetHashCode();
+                var hashCode = obj.Subscription.CreateSubscriptionOptions.SubscriptionName.GetHashCode();
+                hashCode = (hashCode * 397) ^ obj.Subscription.CreateSubscriptionOptions.TopicName.GetHashCode();
+                hashCode = (hashCode * 397) ^ obj.Destination.CreateQueueOptions.Name.GetHashCode();
 
                 return hashCode;
             }

@@ -4,10 +4,9 @@ namespace MassTransit.Azure.ServiceBus.Core.Contexts
     using System.Threading;
     using System.Threading.Tasks;
     using Context;
+    using global::Azure.Messaging.ServiceBus;
     using GreenPipes;
     using GreenPipes.Agents;
-    using Microsoft.Azure.ServiceBus;
-    using Microsoft.Azure.ServiceBus.Core;
     using Transport;
 
 
@@ -18,14 +17,12 @@ namespace MassTransit.Azure.ServiceBus.Core.Contexts
     {
         readonly IAgent _agent;
         readonly SubscriptionSettings _settings;
-        readonly ISubscriptionClient _subscriptionClient;
-        bool _unregisterMessageHandler;
-        bool _unregisterSessionHandler;
+        ServiceBusProcessor _queueClient;
+        ServiceBusSessionProcessor _sessionClient;
 
-        public SubscriptionClientContext(ConnectionContext connectionContext, ISubscriptionClient subscriptionClient, Uri inputAddress,
+        public SubscriptionClientContext(ConnectionContext connectionContext, Uri inputAddress,
             SubscriptionSettings settings, IAgent agent)
         {
-            _subscriptionClient = subscriptionClient;
             _settings = settings;
             _agent = agent;
 
@@ -35,45 +32,62 @@ namespace MassTransit.Azure.ServiceBus.Core.Contexts
 
         public ConnectionContext ConnectionContext { get; }
 
-        public string EntityPath => _settings.TopicDescription.Path;
+        public string EntityPath => _settings.CreateTopicOptions.Name;
 
-        public bool IsClosedOrClosing => _subscriptionClient.IsClosedOrClosing || _subscriptionClient.ServiceBusConnection.IsClosedOrClosing;
+        public bool IsClosedOrClosing => _sessionClient?.IsClosed ?? _queueClient?.IsClosed ?? false;
 
         public Uri InputAddress { get; }
 
-        public void OnMessageAsync(Func<IReceiverClient, Message, CancellationToken, Task> callback, Func<ExceptionReceivedEventArgs, Task> exceptionHandler)
+        public void OnMessageAsync(Func<ProcessMessageEventArgs, ServiceBusReceivedMessage, CancellationToken, Task> callback,
+            Func<ProcessErrorEventArgs, Task> exceptionHandler)
         {
-            _subscriptionClient.RegisterMessageHandler(async (message, token) =>
-            {
-                await callback(_subscriptionClient, message, token).ConfigureAwait(false);
-            }, _settings.GetOnMessageOptions(exceptionHandler));
+            if (_queueClient != null)
+                throw new InvalidOperationException("OnMessageAsync can only be called once");
+            if (_sessionClient != null)
+                throw new InvalidOperationException("OnMessageAsync cannot be called with operating on a session");
 
-            _unregisterMessageHandler = true;
+            _queueClient = ConnectionContext.CreateSubscriptionProcessor(_settings);
+
+            _queueClient.ProcessMessageAsync += args => callback(args, args.Message, args.CancellationToken);
+            _queueClient.ProcessErrorAsync += exceptionHandler;
         }
 
-        public void OnSessionAsync(Func<IMessageSession, Message, CancellationToken, Task> callback, Func<ExceptionReceivedEventArgs, Task> exceptionHandler)
+        public void OnSessionAsync(Func<ProcessSessionMessageEventArgs, ServiceBusReceivedMessage, CancellationToken, Task> callback,
+            Func<ProcessErrorEventArgs, Task> exceptionHandler)
         {
-            _subscriptionClient.RegisterSessionHandler(callback, _settings.GetSessionHandlerOptions(exceptionHandler));
+            if (_sessionClient != null)
+                throw new InvalidOperationException("OnSessionAsync can only be called once");
+            if (_queueClient != null)
+                throw new InvalidOperationException("OnSessionAsync cannot be called with operating without a session");
 
-            _unregisterSessionHandler = true;
+            _sessionClient = ConnectionContext.CreateSubscriptionSessionProcessor(_settings);
+
+            _sessionClient.ProcessMessageAsync += args => callback(args, args.Message, args.CancellationToken);
+            _sessionClient.ProcessErrorAsync += exceptionHandler;
+        }
+
+        public async Task StartAsync()
+        {
+            if (_queueClient != null)
+                await _queueClient.StartProcessingAsync();
+
+            if (_sessionClient != null)
+                await _sessionClient.StartProcessingAsync();
         }
 
         public async Task ShutdownAsync()
         {
             try
             {
-                if (_subscriptionClient != null && !_subscriptionClient.IsClosedOrClosing)
-                {
-                    if (_unregisterMessageHandler)
-                        await _subscriptionClient.UnregisterMessageHandlerAsync(_settings.ShutdownTimeout).ConfigureAwait(false);
+                if (_queueClient is { IsClosed: false })
+                    await _queueClient.StopProcessingAsync().ConfigureAwait(false);
 
-                    if (_unregisterSessionHandler)
-                        await _subscriptionClient.UnregisterSessionHandlerAsync(_settings.ShutdownTimeout).ConfigureAwait(false);
-                }
+                if (_sessionClient is { IsClosed: false })
+                    await _sessionClient.StopProcessingAsync().ConfigureAwait(false);
             }
             catch (Exception exception)
             {
-                LogContext.Warning?.Log(exception, "Shutdown client faulted: {InputAddress}", InputAddress);
+                LogContext.Warning?.Log(exception, "Stop processing client faulted: {InputAddress}", InputAddress);
             }
         }
 
@@ -81,8 +95,11 @@ namespace MassTransit.Azure.ServiceBus.Core.Contexts
         {
             try
             {
-                if (_subscriptionClient != null && !_subscriptionClient.IsClosedOrClosing)
-                    await _subscriptionClient.CloseAsync().ConfigureAwait(false);
+                if (_queueClient is { IsClosed: false })
+                    await _queueClient.CloseAsync().ConfigureAwait(false);
+
+                if (_sessionClient is { IsClosed: false })
+                    await _sessionClient.CloseAsync().ConfigureAwait(false);
             }
             catch (Exception exception)
             {

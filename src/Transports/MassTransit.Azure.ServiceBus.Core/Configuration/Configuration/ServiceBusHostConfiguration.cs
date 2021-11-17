@@ -3,14 +3,12 @@
     using System;
     using Configurators;
     using Definition;
+    using global::Azure.Messaging.ServiceBus;
     using GreenPipes;
     using MassTransit.Configuration;
     using MassTransit.Configurators;
     using MassTransit.Topology;
     using MassTransit.Topology.EntityNameFormatters;
-    using Microsoft.Azure.ServiceBus;
-    using Microsoft.Azure.ServiceBus.Management;
-    using Microsoft.Azure.ServiceBus.Primitives;
     using Pipeline;
     using Settings;
     using Topology;
@@ -43,15 +41,19 @@
 
             ReceiveTransportRetryPolicy = Retry.CreatePolicy(x =>
             {
-                x.Ignore<MessagingEntityNotFoundException>();
-                x.Ignore<MessagingEntityAlreadyExistsException>();
-                x.Ignore<MessageNotFoundException>();
-                x.Ignore<MessageSizeExceededException>();
+                x.Ignore<UnauthorizedAccessException>();
 
-                x.Ignore<UnauthorizedException>();
-
-                x.Handle<ServerBusyException>(exception => exception.IsTransient);
                 x.Handle<TimeoutException>();
+                x.Handle<ServiceBusException>(ex => ex.Reason switch
+                {
+                    ServiceBusFailureReason.MessagingEntityNotFound => false,
+                    ServiceBusFailureReason.MessagingEntityAlreadyExists => false,
+                    ServiceBusFailureReason.MessageNotFound => false,
+                    ServiceBusFailureReason.MessageSizeExceeded => false,
+                    ServiceBusFailureReason.ServiceCommunicationProblem => true,
+                    ServiceBusFailureReason.ServiceBusy when ex.IsTransient => true,
+                    _ => false
+                });
 
                 x.Interval(5, TimeSpan.FromSeconds(10));
             });
@@ -72,7 +74,7 @@
             {
                 _hostSettings = value ?? throw new ArgumentNullException(nameof(value));
 
-                if (_hostSettings.TokenProvider is ManagedIdentityTokenProvider)
+                if (_hostSettings.TokenCredential != null)
                     SetNamespaceSeparatorToUnderscore();
             }
         }
@@ -161,7 +163,7 @@
             where T : class
         {
             var endpointConfiguration = _busConfiguration.CreateEndpointConfiguration();
-            var settings = new SubscriptionEndpointSettings(endpointConfiguration, _busConfiguration.Topology.Publish.GetMessageTopology<T>().TopicDescription,
+            var settings = new SubscriptionEndpointSettings(endpointConfiguration, _busConfiguration.Topology.Publish.GetMessageTopology<T>().CreateTopicOptions,
                 subscriptionName);
 
             CreateSubscriptionEndpointConfiguration(settings, endpointConfiguration, configure);
@@ -198,7 +200,7 @@
             where T : class
         {
             var endpointConfiguration = _busConfiguration.CreateEndpointConfiguration();
-            var settings = new SubscriptionEndpointSettings(endpointConfiguration, _busConfiguration.Topology.Publish.GetMessageTopology<T>().TopicDescription,
+            var settings = new SubscriptionEndpointSettings(endpointConfiguration, _busConfiguration.Topology.Publish.GetMessageTopology<T>().CreateTopicOptions,
                 subscriptionName);
 
             return CreateSubscriptionEndpointConfiguration(settings, endpointConfiguration, configure);

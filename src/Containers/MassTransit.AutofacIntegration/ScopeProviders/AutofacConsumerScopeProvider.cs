@@ -1,12 +1,13 @@
 ﻿namespace MassTransit.AutofacIntegration.ScopeProviders
 {
     using System;
+    using System.Threading.Tasks;
     using Autofac;
     using Context;
     using GreenPipes;
-    using Metadata;
     using Scoping;
     using Scoping.ConsumerContexts;
+    using Util;
 
 
     public class AutofacConsumerScopeProvider :
@@ -23,10 +24,10 @@
             _configureScope = configureScope;
         }
 
-        IConsumerScopeContext IConsumerScopeProvider.GetScope(ConsumeContext context)
+        public ValueTask<IConsumerScopeContext> GetScope(ConsumeContext context)
         {
             if (context.TryGetPayload<ILifetimeScope>(out _))
-                return new ExistingConsumerScopeContext(context);
+                return new ValueTask<IConsumerScopeContext>(new ExistingConsumerScopeContext(context));
 
             var parentLifetimeScope = _scopeProvider.GetLifetimeScope(context);
 
@@ -40,23 +41,23 @@
             {
                 var scopeContext = new ConsumeContextScope(context, lifetimeScope);
 
-                return new CreatedConsumerScopeContext<ILifetimeScope>(lifetimeScope, scopeContext);
+                return new ValueTask<IConsumerScopeContext>(new CreatedConsumerScopeContext<ILifetimeScope>(lifetimeScope, scopeContext));
             }
-            catch
+            catch (Exception ex)
             {
-                lifetimeScope.Dispose();
-
-                throw;
+                return ex.DisposeAsync<IConsumerScopeContext>(() => lifetimeScope.DisposeAsync());
             }
         }
 
-        IConsumerScopeContext<TConsumer, T> IConsumerScopeProvider.GetScope<TConsumer, T>(ConsumeContext<T> context)
+        public ValueTask<IConsumerScopeContext<TConsumer, T>> GetScope<TConsumer, T>(ConsumeContext<T> context)
+            where TConsumer : class
+            where T : class
         {
             if (context.TryGetPayload<ILifetimeScope>(out var existingLifetimeScope))
             {
                 ConsumerConsumeContext<TConsumer, T> consumerContext = existingLifetimeScope.GetConsumer<TConsumer, T>(context);
 
-                return new ExistingConsumerScopeContext<TConsumer, T>(consumerContext);
+                return new ValueTask<IConsumerScopeContext<TConsumer, T>>(new ExistingConsumerScopeContext<TConsumer, T>(consumerContext));
             }
 
             var parentLifetimeScope = _scopeProvider.GetLifetimeScope(context);
@@ -71,13 +72,12 @@
             {
                 ConsumerConsumeContext<TConsumer, T> consumerContext = lifetimeScope.GetConsumerScope<TConsumer, T>();
 
-                return new CreatedConsumerScopeContext<ILifetimeScope, TConsumer, T>(lifetimeScope, consumerContext);
+                return new ValueTask<IConsumerScopeContext<TConsumer, T>>(
+                    new CreatedConsumerScopeContext<ILifetimeScope, TConsumer, T>(lifetimeScope, consumerContext));
             }
-            catch
+            catch (Exception ex)
             {
-                lifetimeScope.Dispose();
-
-                throw;
+                return ex.DisposeAsync<IConsumerScopeContext<TConsumer, T>>(() => lifetimeScope.DisposeAsync());
             }
         }
 

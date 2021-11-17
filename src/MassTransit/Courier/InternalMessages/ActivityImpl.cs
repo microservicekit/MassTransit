@@ -5,9 +5,14 @@
     using Contracts;
 
 
+    [Serializable]
     class ActivityImpl :
         Activity
     {
+        public ActivityImpl()
+        {
+        }
+
         public ActivityImpl(string name, Uri address, IDictionary<string, object> arguments)
         {
             Name = name;
@@ -15,8 +20,8 @@
             Arguments = arguments;
         }
 
-        public string Name { get; private set; }
-        public Uri Address { get; private set; }
-        public IDictionary<string, object> Arguments { get; private set; }
+        public string Name { get; set; }
+        public Uri Address { get; set; }
+        public IDictionary<string, object> Arguments { get; set; }
     }
 }

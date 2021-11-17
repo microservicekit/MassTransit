@@ -30,8 +30,8 @@
             AccessKey = "admin";
             SecretKey = "admin";
 
-            AmazonSqsConfig = new AmazonSQSConfig {ServiceURL = "http://localhost:4566"};
-            AmazonSnsConfig = new AmazonSimpleNotificationServiceConfig {ServiceURL = "http://localhost:4566"};
+            AmazonSqsConfig = new AmazonSQSConfig { ServiceURL = "http://localhost:4566" };
+            AmazonSnsConfig = new AmazonSimpleNotificationServiceConfig { ServiceURL = "http://localhost:4566" };
 
             InputQueueName = "input_queue";
 
@@ -104,7 +104,7 @@
             {
                 ConfigureHost(x);
 
-                // CleanUpVirtualHost();
+                CleanUpVirtualHost();
 
                 ConfigureBus(x);
 
@@ -144,17 +144,13 @@
             try
             {
                 var settings = GetHostSettings();
-                var connection = settings.CreateConnection();
+                using var connection = settings.CreateConnection();
 
-                using (var amazonSqs = connection.CreateAmazonSqsClient())
-                using (var amazonSns = connection.CreateAmazonSnsClient())
-                {
-                    CleanUpQueue(amazonSqs, "input_queue");
+                CleanUpQueue(connection.SqsClient, "input_queue");
 
-                    CleanUpQueue(amazonSqs, InputQueueName);
+                CleanUpQueue(connection.SqsClient, InputQueueName);
 
-                    CleanupVirtualHost(amazonSqs, amazonSns);
-                }
+                CleanupVirtualHost(connection.SqsClient, connection.SnsClient);
             }
             catch (Exception exception)
             {
@@ -162,9 +158,9 @@
             }
         }
 
-        static void CleanUpQueue(IAmazonSQS amazonSqs, string queueName)
+        public void CleanUpQueue(IAmazonSQS amazonSqs, string queueName)
         {
-            async Task CleanUpQueue(string queue)
+            async Task CleanUpQueueAsync(string queue)
             {
                 try
                 {
@@ -179,9 +175,9 @@
 
             Task.Run(async () =>
             {
-                await CleanUpQueue(queueName).ConfigureAwait(false);
-                await CleanUpQueue($"{queueName}_skipped").ConfigureAwait(false);
-                await CleanUpQueue($"{queueName}_error").ConfigureAwait(false);
+                await CleanUpQueueAsync(queueName).ConfigureAwait(false);
+                await CleanUpQueueAsync($"{queueName}_skipped").ConfigureAwait(false);
+                await CleanUpQueueAsync($"{queueName}_error").ConfigureAwait(false);
             });
         }
     }

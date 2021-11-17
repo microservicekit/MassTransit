@@ -1,6 +1,7 @@
 namespace MassTransit.ExtensionsDependencyInjectionIntegration.ScopeProviders
 {
     using System;
+    using System.Threading.Tasks;
     using Courier;
     using Courier.Contexts;
     using GreenPipes;
@@ -8,6 +9,7 @@ namespace MassTransit.ExtensionsDependencyInjectionIntegration.ScopeProviders
     using Microsoft.Extensions.DependencyInjection;
     using Scoping;
     using Scoping.CourierContexts;
+    using Util;
 
 
     public class DependencyInjectionExecuteActivityScopeProvider<TActivity, TArguments> :
@@ -22,11 +24,11 @@ namespace MassTransit.ExtensionsDependencyInjectionIntegration.ScopeProviders
             _serviceProvider = serviceProvider;
         }
 
-        public IExecuteActivityScopeContext<TActivity, TArguments> GetScope(ExecuteContext<TArguments> context)
+        public ValueTask<IExecuteActivityScopeContext<TActivity, TArguments>> GetScope(ExecuteContext<TArguments> context)
         {
             if (context.TryGetPayload<IServiceScope>(out var existingServiceScope))
             {
-                existingServiceScope.UpdateScope(context);
+                existingServiceScope.SetCurrentConsumeContext(context);
 
                 var activity = existingServiceScope.ServiceProvider.GetService<TActivity>();
                 if (activity == null)
@@ -34,7 +36,8 @@ namespace MassTransit.ExtensionsDependencyInjectionIntegration.ScopeProviders
 
                 ExecuteActivityContext<TActivity, TArguments> activityContext = context.CreateActivityContext(activity);
 
-                return new ExistingExecuteActivityScopeContext<TActivity, TArguments>(activityContext);
+                return new ValueTask<IExecuteActivityScopeContext<TActivity, TArguments>>(
+                    new ExistingExecuteActivityScopeContext<TActivity, TArguments>(activityContext));
             }
 
             if (!context.TryGetPayload(out IServiceProvider serviceProvider))
@@ -45,7 +48,7 @@ namespace MassTransit.ExtensionsDependencyInjectionIntegration.ScopeProviders
             {
                 ExecuteContext<TArguments> scopeContext = new ExecuteContextScope<TArguments>(context, serviceScope, serviceScope.ServiceProvider);
 
-                serviceScope.UpdateScope(scopeContext);
+                serviceScope.SetCurrentConsumeContext(scopeContext);
 
                 var activity = serviceScope.ServiceProvider.GetService<TActivity>();
                 if (activity == null)
@@ -53,12 +56,15 @@ namespace MassTransit.ExtensionsDependencyInjectionIntegration.ScopeProviders
 
                 ExecuteActivityContext<TActivity, TArguments> activityContext = scopeContext.CreateActivityContext(activity);
 
-                return new CreatedExecuteActivityScopeContext<IServiceScope, TActivity, TArguments>(serviceScope, activityContext);
+                return new ValueTask<IExecuteActivityScopeContext<TActivity, TArguments>>(
+                    new CreatedExecuteActivityScopeContext<IServiceScope, TActivity, TArguments>(serviceScope, activityContext));
             }
-            catch
+            catch (Exception ex)
             {
-                serviceScope.Dispose();
+                if (serviceScope is IAsyncDisposable asyncDisposable)
+                    return ex.DisposeAsync<IExecuteActivityScopeContext<TActivity, TArguments>>(() => asyncDisposable.DisposeAsync());
 
+                serviceScope.Dispose();
                 throw;
             }
         }

@@ -52,11 +52,6 @@ namespace MassTransit.Definition
             ConfigureSaga(endpointConfigurator, sagaConfigurator);
         }
 
-        public void Configure<T>(IReceiveEndpointConfigurator endpointConfigurator, ISagaMessageConfigurator<TSaga, T> sagaMessageConfigurator)
-            where T : class
-        {
-        }
-
         Type ISagaDefinition.SagaType => typeof(TSaga);
 
         string ISagaDefinition.GetEndpointName(IEndpointNameFormatter formatter)
@@ -67,20 +62,10 @@ namespace MassTransit.Definition
         }
 
         /// <summary>
-        /// Called when configuring the saga on the endpoint. Configuration only applies to this saga, and does not apply to
-        /// the endpoint.
-        /// </summary>
-        /// <param name="endpointConfigurator">The receive endpoint configurator for the consumer</param>
-        /// <param name="sagaConfigurator">The saga configurator</param>
-        protected virtual void ConfigureSaga(IReceiveEndpointConfigurator endpointConfigurator, ISagaConfigurator<TSaga> sagaConfigurator)
-        {
-        }
-
-        /// <summary>
         /// Configure the saga endpoint
         /// </summary>
         /// <param name="configure"></param>
-        protected void Endpoint(Action<ISagaEndpointRegistrationConfigurator<TSaga>> configure)
+        protected void Endpoint(Action<ISagaEndpointRegistrationConfigurator> configure)
         {
             var configurator = new SagaEndpointRegistrationConfigurator<TSaga>();
 
@@ -94,10 +79,8 @@ namespace MassTransit.Definition
         /// the endpoint.
         /// </summary>
         /// <param name="endpointConfigurator">The receive endpoint configurator for the consumer</param>
-        /// <param name="sagaMessageConfigurator">The saga message configurator</param>
-        protected virtual void ConfigureSagaMessage<T>(IReceiveEndpointConfigurator endpointConfigurator, ISagaMessageConfigurator<TSaga, T>
-            sagaMessageConfigurator)
-            where T : class
+        /// <param name="sagaConfigurator">The saga configurator</param>
+        protected virtual void ConfigureSaga(IReceiveEndpointConfigurator endpointConfigurator, ISagaConfigurator<TSaga> sagaConfigurator)
         {
         }
     }

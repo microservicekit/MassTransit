@@ -57,11 +57,17 @@
 
         public T Deserialize<T>(object value)
         {
+            if (value is T val)
+                return val;
+
             return (T)Deserialize(value, typeof(T), false);
         }
 
         T IObjectTypeDeserializer.Deserialize<T>(object value, T defaultValue)
         {
+            if (value is T val)
+                return val;
+
             var result = Deserialize(value, typeof(T), true);
             if (result == null)
                 return defaultValue;

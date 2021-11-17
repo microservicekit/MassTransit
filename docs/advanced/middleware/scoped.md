@@ -140,10 +140,10 @@ public class Startup
     {
         services.AddScoped<MyDependency>();
 
-        services.AddConsumer<MyConsumer>();
-
         services.AddMassTransit(x =>
         {
+            x.AddConsumer<MyConsumer>();
+
             x.UsingRabbitMq((context, cfg) =>
             {
                 cfg.UseSendFilter(typeof(MySendFilter<>), context);
@@ -151,7 +151,7 @@ public class Startup
                 cfg.ReceiveEndpoint("input-queue", e =>
                 {
                     e.UseConsumeFilter(typeof(MyConsumeFilter<>), context);
-                    e.ConfigureConsumer<MyConsumer>();
+                    e.ConfigureConsumer<MyConsumer>(context);
                 });
             });
         });
@@ -175,7 +175,7 @@ The updated receive endpoint configuration using the InMemoryOutbox is shown bel
                     e.UseInMemoryOutbox();
 
                     e.UseConsumeFilter(typeof(MyConsumeFilter<>), context);
-                    e.ConfigureConsumer<MyConsumer>();
+                    e.ConfigureConsumer<MyConsumer>(context);
                 });
 ```
 

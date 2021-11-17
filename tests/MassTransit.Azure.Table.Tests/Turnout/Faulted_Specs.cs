@@ -2,10 +2,10 @@ namespace MassTransit.Azure.Table.Tests.Turnout
 {
     using System;
     using System.Threading.Tasks;
-    using Conductor;
     using Contracts.JobService;
     using Definition;
     using JobService;
+    using JobService.Configuration;
     using NUnit.Framework;
     using TestFramework;
     using Tests;
@@ -13,9 +13,13 @@ namespace MassTransit.Azure.Table.Tests.Turnout
 
     public interface GrindTheGears
     {
+        Guid GearId { get; }
         TimeSpan Duration { get; }
     }
 
+
+    [TestFixture]
+    [Category("Flaky")]
     public class Submitting_a_job_to_turnout_that_faults :
         AzureTableInMemoryTestFixture
     {
@@ -23,20 +27,24 @@ namespace MassTransit.Azure.Table.Tests.Turnout
         [Order(1)]
         public async Task Should_get_the_job_accepted()
         {
-            var serviceClient = Bus.CreateServiceClient();
-
-            IRequestClient<SubmitJob<GrindTheGears>> requestClient = serviceClient.CreateRequestClient<SubmitJob<GrindTheGears>>();
+            IRequestClient<SubmitJob<GrindTheGears>> requestClient = Bus.CreateRequestClient<SubmitJob<GrindTheGears>>();
 
             Response<JobSubmissionAccepted> response = await requestClient.GetResponse<JobSubmissionAccepted>(new
             {
                 JobId = _jobId,
-                Job = new {Duration = TimeSpan.FromSeconds(1)}
+                Job = new
+                {
+                    GearId = _jobId,
+                    Duration = TimeSpan.FromSeconds(1)
+                }
             });
 
             Assert.That(response.Message.JobId, Is.EqualTo(_jobId));
 
             // just to capture all the test output in a single window
             ConsumeContext<JobFaulted> faulted = await _faulted;
+
+            await _fault;
         }
 
         [Test]
@@ -44,6 +52,13 @@ namespace MassTransit.Azure.Table.Tests.Turnout
         public async Task Should_have_published_the_job_faulted_event()
         {
             ConsumeContext<JobFaulted> faulted = await _faulted;
+        }
+
+        [Test]
+        [Order(4)]
+        public async Task Should_have_published_the_fault_event()
+        {
+            ConsumeContext<Fault<GrindTheGears>> fault = await _fault;
         }
 
         [Test]
@@ -64,13 +79,13 @@ namespace MassTransit.Azure.Table.Tests.Turnout
         Task<ConsumeContext<JobFaulted>> _faulted;
         Task<ConsumeContext<JobSubmitted>> _submitted;
         Task<ConsumeContext<JobStarted>> _started;
+        Task<ConsumeContext<Fault<GrindTheGears>>> _fault;
 
         protected override void ConfigureInMemoryBus(IInMemoryBusFactoryConfigurator configurator)
         {
             base.ConfigureInMemoryBus(configurator);
 
             var options = new ServiceInstanceOptions()
-                .EnableInstanceEndpoint()
                 .SetEndpointNameFormatter(KebabCaseEndpointNameFormatter.Instance);
 
             configurator.ServiceInstance(options, instance =>
@@ -95,6 +110,7 @@ namespace MassTransit.Azure.Table.Tests.Turnout
             _submitted = Handled<JobSubmitted>(configurator, context => context.Message.JobId == _jobId);
             _started = Handled<JobStarted>(configurator, context => context.Message.JobId == _jobId);
             _faulted = Handled<JobFaulted>(configurator, context => context.Message.JobId == _jobId);
+            _fault = Handled<Fault<GrindTheGears>>(configurator, context => context.Message.Message.GearId == _jobId);
         }
 
 

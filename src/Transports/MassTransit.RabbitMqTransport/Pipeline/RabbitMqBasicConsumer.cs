@@ -2,6 +2,7 @@ namespace MassTransit.RabbitMqTransport.Pipeline
 {
     using System;
     using System.Collections.Concurrent;
+    using System.Threading;
     using System.Threading.Tasks;
     using Context;
     using Contexts;
@@ -28,7 +29,7 @@ namespace MassTransit.RabbitMqTransport.Pipeline
         readonly RabbitMqReceiveEndpointContext _context;
         readonly TaskCompletionSource<bool> _deliveryComplete;
         readonly IReceivePipeDispatcher _dispatcher;
-        readonly ChannelExecutor _executor;
+        readonly SemaphoreSlim _limit;
         readonly ModelContext _model;
         readonly ConcurrentDictionary<ulong, RabbitMqReceiveContext> _pending;
         readonly ReceiveSettings _receiveSettings;
@@ -54,9 +55,10 @@ namespace MassTransit.RabbitMqTransport.Pipeline
             _dispatcher = context.CreateReceivePipeDispatcher();
             _dispatcher.ZeroActivity += HandleDeliveryComplete;
 
-            _executor = new ChannelExecutor(context.PrefetchCount, context.ConcurrentMessageLimit ?? context.PrefetchCount);
-
             _deliveryComplete = TaskUtil.GetTask<bool>();
+
+            if (context.ConcurrentMessageLimit.HasValue)
+                _limit = new SemaphoreSlim(context.ConcurrentMessageLimit.Value);
 
             ConsumerCancelled += OnConsumerCancelled;
         }
@@ -183,7 +185,7 @@ namespace MassTransit.RabbitMqTransport.Pipeline
         {
             var bodyBytes = body.ToArray();
 
-            _executor.PushWithWait(async () =>
+            Task.Run(async () =>
             {
                 LogContext.Current = _context.LogContext;
 
@@ -196,6 +198,9 @@ namespace MassTransit.RabbitMqTransport.Pipeline
 
                 var receiveLock = _receiveSettings.NoAck ? default : new RabbitMqReceiveLockContext(_model, deliveryTag);
 
+                if (_limit != null)
+                    await _limit.WaitAsync(context.CancellationToken).ConfigureAwait(false);
+
                 try
                 {
                     await _dispatcher.Dispatch(context, receiveLock).ConfigureAwait(false);
@@ -206,6 +211,8 @@ namespace MassTransit.RabbitMqTransport.Pipeline
                 }
                 finally
                 {
+                    _limit?.Release();
+
                     if (added)
                         _pending.TryRemove(deliveryTag, out _);
 
@@ -256,6 +263,8 @@ namespace MassTransit.RabbitMqTransport.Pipeline
             try
             {
                 await Completed.ConfigureAwait(false);
+
+                _limit?.Dispose();
             }
             catch (OperationCanceledException)
             {
@@ -263,10 +272,6 @@ namespace MassTransit.RabbitMqTransport.Pipeline
                     pendingContext.Cancel();
 
                 throw;
-            }
-            finally
-            {
-                await _executor.DisposeAsync().ConfigureAwait(false);
             }
         }
 

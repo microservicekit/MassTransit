@@ -21,6 +21,11 @@ namespace MassTransit.JobService
             SlotWaitTime = TimeSpan.FromSeconds(30);
             StartJobTimeout = TimeSpan.Zero;
             SlotRequestTimeout = TimeSpan.Zero;
+            HeartbeatInterval = TimeSpan.FromMinutes(1);
+            HeartbeatTimeout = TimeSpan.FromMinutes(5);
+
+            SuspectJobRetryCount = 3;
+            SagaPartitionCount = 16;
         }
 
         public string JobTypeSagaEndpointName
@@ -94,6 +99,16 @@ namespace MassTransit.JobService
         public TimeSpan StatusCheckInterval { get; set; }
 
         /// <summary>
+        /// How often a job instance should send a heartbeat
+        /// </summary>
+        public TimeSpan HeartbeatInterval { get; set; }
+
+        /// <summary>
+        /// The time after which an instance will automatically be purged from the instance list
+        /// </summary>
+        public TimeSpan HeartbeatTimeout { get; set; }
+
+        /// <summary>
         /// The number of times to retry a suspect job before it is faulted. Defaults to zero.
         /// </summary>
         public int SuspectJobRetryCount { get; set; }
@@ -113,6 +128,8 @@ namespace MassTransit.JobService
         /// If true, completed jobs will be finalized, removing the saga from the repository
         /// </summary>
         public bool FinalizeCompleted { get; set; }
+
+        internal IReceiveEndpointConfigurator InstanceEndpointConfigurator { get; set; }
 
         IEnumerable<ValidationResult> ISpecification.Validate()
         {

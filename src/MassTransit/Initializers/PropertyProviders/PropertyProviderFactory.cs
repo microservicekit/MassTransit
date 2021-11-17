@@ -5,6 +5,7 @@ namespace MassTransit.Initializers.PropertyProviders
     using System.IO;
     using System.Reflection;
     using System.Threading.Tasks;
+    using Automatonymous;
     using Internals.Extensions;
     using Metadata;
     using PropertyConverters;
@@ -61,6 +62,9 @@ namespace MassTransit.Initializers.PropertyProviders
 
             if (propertyType.ClosesType(typeof(IInitializerVariable<>), out types))
                 return (IProviderFactory)Activator.CreateInstance(typeof(VariableProperty<,>).MakeGenericType(typeof(TInput), propertyType, types[0]), this);
+
+            if (propertyType.ClosesType(typeof(State<>), out types))
+                return (IProviderFactory)Activator.CreateInstance(typeof(StateProperty<>).MakeGenericType(typeof(TInput), types[0]), this);
 
             if (propertyType.IsValueTypeOrObject())
                 return (IProviderFactory)Activator.CreateInstance(typeof(Convert<,>).MakeGenericType(typeof(TInput), type, propertyType), this);
@@ -360,32 +364,19 @@ namespace MassTransit.Initializers.PropertyProviders
 
             public bool TryGetConverter<T, TProperty>(out IPropertyConverter<T, TProperty> converter)
             {
-                if (typeof(TValue) == typeof(string) || typeof(TValue) == typeof(byte[]) || typeof(Stream).IsAssignableFrom(typeof(TValue)))
+                if (typeof(T).ClosesType(typeof(MessageData<>), out Type[] types))
                 {
-                    if (typeof(T).ClosesType(typeof(MessageData<>), out Type[] types) && types[0] == typeof(string))
-                    {
-                        if (typeof(TProperty) == typeof(string) || typeof(TProperty) == typeof(MessageData<string>))
-                        {
-                            converter = new MessageDataPropertyConverter() as IPropertyConverter<T, TProperty>;
-                            return converter != null;
-                        }
-                    }
+                    converter = MessageDataPropertyConverter.Instance as IPropertyConverter<T, TProperty>;
+                    if (converter != null)
+                        return true;
 
-                    if (typeof(T).ClosesType(typeof(MessageData<>), out types) && typeof(Stream).IsAssignableFrom(types[0]))
+                    if (MessageDataExtensions.IsValidMessageDataType(types[0]))
                     {
-                        if (typeof(Stream).IsAssignableFrom(typeof(TProperty)) || typeof(TProperty) == typeof(MessageData<Stream>))
+                        if (typeof(TProperty) == types[0] || typeof(TProperty) == typeof(MessageData<>).MakeGenericType(types[0]))
                         {
-                            converter = new MessageDataPropertyConverter() as IPropertyConverter<T, TProperty>;
-                            return converter != null;
-                        }
-                    }
+                            var converterType = typeof(MessageDataPropertyConverter<>).MakeGenericType(types[0]);
 
-                    if (typeof(T).ClosesType(typeof(MessageData<>), out types) && types[0] == typeof(byte[]))
-                    {
-                        if (typeof(TProperty) == typeof(string) || typeof(TProperty) == typeof(MessageData<string>)
-                            || typeof(TProperty) == typeof(byte[]) || typeof(TProperty) == typeof(MessageData<byte[]>))
-                        {
-                            converter = new MessageDataPropertyConverter() as IPropertyConverter<T, TProperty>;
+                            converter = Activator.CreateInstance(converterType) as IPropertyConverter<T, TProperty>;
                             return converter != null;
                         }
                     }
@@ -497,6 +488,51 @@ namespace MassTransit.Initializers.PropertyProviders
                 if (_factory.TryGetPropertyConverter<T, TValue>(out IPropertyConverter<T, TValue> elementConverter))
                 {
                     converter = new VariablePropertyConverter<T, TVariable, TValue>(elementConverter) as IPropertyConverter<T, TProperty>;
+                    return converter != null;
+                }
+
+                converter = default;
+                return false;
+            }
+        }
+
+
+        class StateProperty<TInstance> :
+            IProviderFactory
+            where TInstance : class, SagaStateMachineInstance
+        {
+            readonly IPropertyProviderFactory<TInput> _factory;
+
+            public StateProperty(IPropertyProviderFactory<TInput> factory)
+            {
+                _factory = factory;
+            }
+
+            bool IProviderFactory.TryGetProvider<T>(PropertyInfo propertyInfo, out IPropertyProvider<TInput, T> provider)
+            {
+                if (TryGetConverter(out IPropertyConverter<T, TInstance> propertyConverter))
+                {
+                    var inputValuePropertyProvider = new InputPropertyProvider<TInput, TInstance>(propertyInfo);
+
+                    provider = new PropertyConverterPropertyProvider<TInput, T, TInstance>(propertyConverter, inputValuePropertyProvider);
+                    return true;
+                }
+
+                provider = default;
+                return false;
+            }
+
+            public bool TryGetConverter<T, TProperty>(out IPropertyConverter<T, TProperty> converter)
+            {
+                if (typeof(T) == typeof(string))
+                {
+                    converter = new StatePropertyConverter<TInstance>() as IPropertyConverter<T, TProperty>;
+                    return converter != null;
+                }
+
+                if (_factory.TryGetPropertyConverter(out IPropertyConverter<T, string> elementConverter))
+                {
+                    converter = new StatePropertyConverter<T, TInstance>(elementConverter) as IPropertyConverter<T, TProperty>;
                     return converter != null;
                 }
 

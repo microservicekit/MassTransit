@@ -27,8 +27,18 @@ namespace MassTransit.Contracts.JobService
         Uri ServiceAddress { get; }
 
         /// <summary>
+        /// The instance address of the assigned job slot instance
+        /// </summary>
+        Uri InstanceAddress { get; }
+
+        /// <summary>
         /// The job, as an object dictionary
         /// </summary>
         IDictionary<string, object> Job { get; }
+
+        /// <summary>
+        /// The JobTypeId, to ensure the proper job type is started
+        /// </summary>
+        Guid JobTypeId { get; }
     }
 }

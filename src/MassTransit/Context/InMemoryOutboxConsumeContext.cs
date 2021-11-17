@@ -12,14 +12,14 @@ namespace MassTransit.Context
         OutboxContext
     {
         readonly TaskCompletionSource<InMemoryOutboxConsumeContext> _clearToSend;
-        readonly ConsumeContext _context;
         readonly InMemoryOutboxMessageSchedulerContext _outboxSchedulerContext;
         readonly List<Func<Task>> _pendingActions;
 
         public InMemoryOutboxConsumeContext(ConsumeContext context)
             : base(context)
         {
-            _context = context;
+            CapturedContext = context;
+
             var outboxReceiveContext = new InMemoryOutboxReceiveContext(this, context.ReceiveContext);
 
             ReceiveContext = outboxReceiveContext;
@@ -30,19 +30,26 @@ namespace MassTransit.Context
 
             if (context.TryGetPayload(out MessageSchedulerContext schedulerContext))
             {
-                _outboxSchedulerContext = new InMemoryOutboxMessageSchedulerContext(schedulerContext);
+                _outboxSchedulerContext = new InMemoryOutboxMessageSchedulerContext(schedulerContext, _clearToSend.Task);
                 context.AddOrUpdatePayload(() => _outboxSchedulerContext, _ => _outboxSchedulerContext);
             }
         }
 
-        public ConsumeContext CapturedContext => _context;
+        public ConsumeContext CapturedContext { get; }
 
         public Task ClearToSend => _clearToSend.Task;
 
-        public void Add(Func<Task> method)
+        public Task Add(Func<Task> method)
         {
+            if (_clearToSend.Task.IsCompleted)
+                return method();
+
             lock (_pendingActions)
+            {
                 _pendingActions.Add(method);
+
+                return Task.CompletedTask;
+            }
         }
 
         public async Task ExecutePendingActions(bool concurrentMessageDelivery)
@@ -103,16 +110,6 @@ namespace MassTransit.Context
                     LogContext.Warning?.Log(e, "One or more messages could not be unscheduled.", e);
                 }
             }
-        }
-
-        public override Task NotifyConsumed<T>(ConsumeContext<T> context, TimeSpan duration, string consumerType)
-        {
-            return _context.NotifyConsumed(context, duration, consumerType);
-        }
-
-        public override Task NotifyFaulted<T>(ConsumeContext<T> context, TimeSpan duration, string consumerType, Exception exception)
-        {
-            return _context.NotifyFaulted(context, duration, consumerType, exception);
         }
     }
 

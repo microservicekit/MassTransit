@@ -60,21 +60,24 @@
                     ConsumeResult<TKey, TValue> consumeResult = await _consumerContext.Consume(_cancellationTokenSource.Token).ConfigureAwait(false);
                     await executor.Push(() => Handle(consumeResult), Stopping).ConfigureAwait(false);
                 }
+
+                SetCompleted(TaskUtil.Completed);
             }
             catch (OperationCanceledException exception) when (exception.CancellationToken == Stopping
                 || exception.CancellationToken == _cancellationTokenSource.Token)
             {
+                SetCompleted(TaskUtil.Completed);
             }
             catch (Exception exception)
             {
                 LogContext.Error?.Log(exception, "Consume Loop faulted");
+
+                SetCompleted(TaskUtil.Faulted<bool>(exception));
             }
             finally
             {
                 await executor.DisposeAsync().ConfigureAwait(false);
             }
-
-            SetCompleted(TaskUtil.Completed);
         }
 
         async Task Handle(ConsumeResult<TKey, TValue> result)
@@ -82,7 +85,7 @@
             if (IsStopping)
                 return;
 
-            var context = new ConsumeResultReceiveContext<TKey, TValue>(result, _context, _consumerContext, _consumerContext.HeadersDeserializer);
+            var context = new KafkaReceiveContext<TKey, TValue>(result, _context, _consumerContext, _consumerContext.HeadersDeserializer);
 
             try
             {
@@ -100,11 +103,13 @@
 
         void HandleKafkaError(IConsumer<TKey, TValue> consumer, Error error)
         {
-            if (_cancellationTokenSource.Token.IsCancellationRequested)
-                return;
-            var activeDispatchCount = _dispatcher.ActiveDispatchCount;
-            EnabledLogger? logger = error.IsFatal ? LogContext.Critical : LogContext.Error;
+            EnabledLogger? logger = error.IsFatal ? LogContext.Error : LogContext.Warning;
             logger?.Log("Consumer error ({Code}): {Reason} on {Topic}", error.Code, error.Reason, _consumerContext.ReceiveSettings.Topic);
+
+            if (_cancellationTokenSource.IsCancellationRequested)
+                return;
+
+            var activeDispatchCount = _dispatcher.ActiveDispatchCount;
             if (activeDispatchCount == 0 || error.IsLocalError)
             {
                 _cancellationTokenSource.Cancel();

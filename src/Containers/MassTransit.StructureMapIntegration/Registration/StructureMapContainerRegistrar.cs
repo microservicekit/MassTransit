@@ -5,6 +5,7 @@ namespace MassTransit.StructureMapIntegration.Registration
     using Clients;
     using Courier;
     using Definition;
+    using Futures;
     using MassTransit.Registration;
     using Mediator;
     using Saga;
@@ -123,6 +124,20 @@ namespace MassTransit.StructureMapIntegration.Registration
                 _expression.ForSingletonOf<IEndpointSettings<IEndpointDefinition<T>>>().Use(settings);
         }
 
+        public void RegisterFuture<TFuture>()
+            where TFuture : MassTransitStateMachine<FutureState>
+        {
+            _expression.For<TFuture>().Singleton();
+        }
+
+        public void RegisterFutureDefinition<TDefinition, TFuture>()
+            where TDefinition : class, IFutureDefinition<TFuture>
+            where TFuture : MassTransitStateMachine<FutureState>
+        {
+            _expression.For<IFutureDefinition<TFuture>>()
+                .Use<TDefinition>();
+        }
+
         public void RegisterRequestClient<T>(RequestTimeout timeout = default)
             where T : class
         {
@@ -133,6 +148,11 @@ namespace MassTransit.StructureMapIntegration.Registration
             where T : class
         {
             _expression.For<IRequestClient<T>>().Use(context => CreateRequestClient<T>(destinationAddress, timeout, context));
+        }
+
+        public void RegisterScopedClientFactory()
+        {
+            _expression.For<IScopedClientFactory>().Use(context => CreateScopedClientFactory(context));
         }
 
         public void Register<T, TImplementation>()
@@ -184,6 +204,17 @@ namespace MassTransit.StructureMapIntegration.Registration
 
             return new ClientFactory(new ScopedClientFactoryContext<IContainer>(clientFactory, context.GetInstance<IContainer>()))
                 .CreateRequestClient<T>(destinationAddress, timeout);
+        }
+
+        IScopedClientFactory CreateScopedClientFactory(IContext context)
+        {
+            var clientFactory = GetClientFactory(context);
+            var consumeContext = context.TryGetInstance<ConsumeContext>();
+
+            return consumeContext != null
+                ? new ScopedClientFactory(clientFactory, consumeContext)
+                : new ScopedClientFactory(new ClientFactory(
+                    new ScopedClientFactoryContext<IContainer>(clientFactory, context.GetInstance<IContainer>())), null);
         }
 
         IExecuteActivityScopeProvider<TActivity, TArguments> CreateExecuteActivityScopeProvider<TActivity, TArguments>(IContext context)

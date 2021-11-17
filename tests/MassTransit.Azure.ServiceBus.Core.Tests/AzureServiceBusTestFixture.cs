@@ -5,6 +5,7 @@
     using System.Threading.Tasks;
     using MassTransit.Testing;
     using NUnit.Framework;
+    using NUnit.Framework.Internal;
     using TestFramework;
     using Testing;
 
@@ -13,13 +14,13 @@
     public abstract class AzureServiceBusTestFixture :
         BusTestFixture
     {
+        TestExecutionContext _fixtureContext;
         protected AzureServiceBusTestHarness AzureServiceBusTestHarness { get; }
 
         public AzureServiceBusTestFixture(string inputQueueName = null, Uri serviceUri = null, ServiceBusTokenProviderSettings settings = null)
             : this(new AzureServiceBusTestHarness(
                 serviceUri ?? AzureServiceBusEndpointUriCreator.Create(Configuration.ServiceNamespace, "MassTransit.Azure.ServiceBus.Core.Tests"),
-                settings?.KeyName ?? ((ServiceBusTokenProviderSettings)new TestAzureServiceBusAccountSettings()).KeyName,
-                settings?.SharedAccessKey ?? ((ServiceBusTokenProviderSettings)new TestAzureServiceBusAccountSettings()).SharedAccessKey,
+                settings?.NamedKeyCredential ?? ((ServiceBusTokenProviderSettings)new TestAzureServiceBusAccountSettings()).NamedKeyCredential,
                 inputQueueName))
         {
         }
@@ -56,15 +57,20 @@
         [OneTimeSetUp]
         public async Task SetupAzureServiceBusTestFixture()
         {
-            using (var source = new CancellationTokenSource(TimeSpan.FromSeconds(20)))
-            {
-                await AzureServiceBusTestHarness.Start(source.Token);
-            }
+            _fixtureContext = TestExecutionContext.CurrentContext;
+
+            LoggerFactory.Current = _fixtureContext;
+
+            using var source = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+
+            await AzureServiceBusTestHarness.Start(source.Token);
         }
 
         [OneTimeTearDown]
         public Task TearDownInMemoryTestFixture()
         {
+            LoggerFactory.Current = _fixtureContext;
+
             return AzureServiceBusTestHarness.Stop();
         }
 

@@ -31,22 +31,22 @@
         {
             if (_configuration.ConfigureConsumeTopology && options.HasFlag(ConnectPipeOptions.ConfigureConsumeTopology))
             {
-                _configuration.Topology.Consume
-                    .GetMessageTopology<T>()
-                    .Bind();
+                IRabbitMqMessageConsumeTopologyConfigurator<T> topology = _configuration.Topology.Consume.GetMessageTopology<T>();
+                if (topology.ConfigureConsumeTopology)
+                    topology.Bind();
             }
 
             return base.ConnectConsumePipe(pipe, options);
         }
 
-        public RabbitMqReceiveEndpointContext CreateReceiveEndpointContext(ReceiveSettings receiveSettings)
+        public RabbitMqReceiveEndpointContext CreateReceiveEndpointContext()
         {
             var brokerTopology = BuildTopology(_configuration.Settings);
 
             var deadLetterTransport = CreateDeadLetterTransport();
             var errorTransport = CreateErrorTransport();
 
-            var context = new RabbitMqQueueReceiveEndpointContext(_hostConfiguration, _configuration, brokerTopology, receiveSettings);
+            var context = new RabbitMqQueueReceiveEndpointContext(_hostConfiguration, _configuration, brokerTopology);
 
             context.GetOrAddPayload(() => deadLetterTransport);
             context.GetOrAddPayload(() => errorTransport);

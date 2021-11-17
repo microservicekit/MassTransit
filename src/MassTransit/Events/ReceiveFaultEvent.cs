@@ -8,6 +8,10 @@
     public class ReceiveFaultEvent :
         ReceiveFault
     {
+        public ReceiveFaultEvent()
+        {
+        }
+
         public ReceiveFaultEvent(HostInfo host, Exception exception, string contentType, Guid? faultedMessageId, string[] faultMessageTypes)
         {
             Timestamp = DateTime.UtcNow;
@@ -20,15 +24,15 @@
 
             var aggregateException = exception as AggregateException;
             Exceptions = aggregateException?.InnerExceptions.Select(x => (ExceptionInfo)new FaultExceptionInfo(x)).ToArray()
-                ?? new ExceptionInfo[] {new FaultExceptionInfo(exception)};
+                ?? new ExceptionInfo[] { new FaultExceptionInfo(exception) };
         }
 
-        public Guid FaultId { get; }
-        public DateTime Timestamp { get; }
-        public Guid? FaultedMessageId { get; }
-        public ExceptionInfo[] Exceptions { get; }
-        public HostInfo Host { get; }
-        public string[] FaultMessageTypes { get; }
-        public string ContentType { get; }
+        public Guid FaultId { get; set; }
+        public DateTime Timestamp { get; set; }
+        public Guid? FaultedMessageId { get; set; }
+        public ExceptionInfo[] Exceptions { get; set; }
+        public HostInfo Host { get; set; }
+        public string[] FaultMessageTypes { get; set; }
+        public string ContentType { get; set; }
     }
 }

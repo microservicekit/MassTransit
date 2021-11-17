@@ -26,18 +26,24 @@ namespace MassTransit.ExtensionsDependencyInjectionIntegration.Registration
             IBusRegistrationContext CreateRegistrationContext(IServiceProvider serviceProvider)
             {
                 var provider = serviceProvider.GetRequiredService<IConfigurationServiceProvider>();
-                var busHealth = serviceProvider.GetRequiredService<BusHealth>();
-                return new BusRegistrationContext(provider, busHealth, Endpoints, Consumers, Sagas, ExecuteActivities, Activities);
+
+                return new BusRegistrationContext(provider, Endpoints, Consumers, Sagas, ExecuteActivities, Activities, Futures);
             }
 
             collection.AddSingleton(provider =>
                 ClientFactoryProvider(provider.GetRequiredService<IConfigurationServiceProvider>(), provider.GetRequiredService<IBus>()));
 
-            collection.AddSingleton(provider => new BusHealth());
-            collection.AddSingleton<IBusHealth>(provider => provider.GetRequiredService<BusHealth>());
-
             collection.AddSingleton(provider => Bind<IBus>.Create(CreateRegistrationContext(provider)));
             collection.AddSingleton(provider => provider.GetRequiredService<Bind<IBus, IBusRegistrationContext>>().Value);
+
+            collection.TryAdd(ServiceDescriptor.Singleton(typeof(IReceiveEndpointDispatcher<>), typeof(ReceiveEndpointDispatcher<>)));
+            collection.AddSingleton<IReceiveEndpointDispatcherFactory>(provider =>
+            {
+                var registrationContext = provider.GetRequiredService<Bind<IBus, IBusRegistrationContext>>().Value;
+                var busInstance = provider.GetRequiredService<Bind<IBus, IBusInstance>>().Value;
+
+                return new ReceiveEndpointDispatcherFactory(registrationContext, busInstance);
+            });
         }
 
         protected ServiceCollectionBusConfigurator(IServiceCollection collection, IContainerRegistrar registrar)
@@ -70,6 +76,11 @@ namespace MassTransit.ExtensionsDependencyInjectionIntegration.Registration
             Collection.AddSingleton<IReceiveEndpointConnector>(provider => provider.GetRequiredService<Bind<IBus, IBusInstance>>().Value);
             Collection.AddSingleton(provider => provider.GetRequiredService<Bind<IBus, IBusInstance>>().Value.BusControl);
             Collection.AddSingleton(provider => provider.GetRequiredService<Bind<IBus, IBusInstance>>().Value.Bus);
+
+            Registrar.RegisterScopedClientFactory();
+
+        #pragma warning disable 618
+            Collection.AddSingleton<IBusHealth>(provider => new BusHealth(provider.GetRequiredService<Bind<IBus, IBusInstance>>().Value));
         }
 
         public virtual void AddRider(Action<IRiderRegistrationConfigurator> configure)

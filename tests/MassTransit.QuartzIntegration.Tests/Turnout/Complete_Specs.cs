@@ -3,10 +3,10 @@ namespace MassTransit.QuartzIntegration.Tests.Turnout
     using System;
     using System.Linq;
     using System.Threading.Tasks;
-    using Conductor;
     using Contracts.JobService;
     using Definition;
     using JobService;
+    using JobService.Configuration;
     using NUnit.Framework;
     using Util;
 
@@ -28,6 +28,7 @@ namespace MassTransit.QuartzIntegration.Tests.Turnout
 
 
     [TestFixture]
+    [Category("Flaky")]
     public class Submitting_a_job_to_turnout :
         QuartzInMemoryTestFixture
     {
@@ -35,9 +36,7 @@ namespace MassTransit.QuartzIntegration.Tests.Turnout
         [Order(1)]
         public async Task Should_get_the_job_accepted()
         {
-            var serviceClient = Bus.CreateServiceClient();
-
-            IRequestClient<SubmitJob<CrunchTheNumbers>> requestClient = serviceClient.CreateRequestClient<SubmitJob<CrunchTheNumbers>>();
+            IRequestClient<SubmitJob<CrunchTheNumbers>> requestClient = Bus.CreateRequestClient<SubmitJob<CrunchTheNumbers>>();
 
             Response<JobSubmissionAccepted> response = await requestClient.GetResponse<JobSubmissionAccepted>(new
             {
@@ -87,7 +86,6 @@ namespace MassTransit.QuartzIntegration.Tests.Turnout
             base.ConfigureInMemoryBus(configurator);
 
             var options = new ServiceInstanceOptions()
-                .EnableInstanceEndpoint()
                 .SetEndpointNameFormatter(KebabCaseEndpointNameFormatter.Instance);
 
             configurator.ServiceInstance(options, instance =>
@@ -111,6 +109,7 @@ namespace MassTransit.QuartzIntegration.Tests.Turnout
 
 
     [TestFixture]
+    [Category("Flaky")]
     public class Submitting_a_job_to_turnout_using_request_client :
         QuartzInMemoryTestFixture
     {
@@ -170,7 +169,6 @@ namespace MassTransit.QuartzIntegration.Tests.Turnout
             base.ConfigureInMemoryBus(configurator);
 
             var options = new ServiceInstanceOptions()
-                .EnableInstanceEndpoint()
                 .SetEndpointNameFormatter(KebabCaseEndpointNameFormatter.Instance);
 
             configurator.ServiceInstance(options, instance =>
@@ -207,9 +205,7 @@ namespace MassTransit.QuartzIntegration.Tests.Turnout
         [Order(1)]
         public async Task Should_get_the_job_accepted()
         {
-            var serviceClient = Bus.CreateServiceClient();
-
-            IRequestClient<SubmitJob<CrunchTheNumbers>> requestClient = serviceClient.CreateRequestClient<SubmitJob<CrunchTheNumbers>>();
+            IRequestClient<SubmitJob<CrunchTheNumbers>> requestClient = Bus.CreateRequestClient<SubmitJob<CrunchTheNumbers>>();
 
             for (var i = 0; i < Count; i++)
             {
@@ -264,7 +260,6 @@ namespace MassTransit.QuartzIntegration.Tests.Turnout
             base.ConfigureInMemoryBus(configurator);
 
             var options = new ServiceInstanceOptions()
-                .EnableInstanceEndpoint()
                 .SetEndpointNameFormatter(KebabCaseEndpointNameFormatter.Instance);
 
             configurator.ServiceInstance(options, instance =>
@@ -348,9 +343,7 @@ namespace MassTransit.QuartzIntegration.Tests.Turnout
         [Order(1)]
         public async Task Should_get_the_job_accepted()
         {
-            var serviceClient = Bus.CreateServiceClient();
-
-            IRequestClient<SubmitJob<CrunchTheNumbers>> requestClient = serviceClient.CreateRequestClient<SubmitJob<CrunchTheNumbers>>();
+            IRequestClient<SubmitJob<CrunchTheNumbers>> requestClient = Bus.CreateRequestClient<SubmitJob<CrunchTheNumbers>>();
 
             Response<JobSubmissionAccepted> response = await requestClient.GetResponse<JobSubmissionAccepted>(new
             {
@@ -400,7 +393,6 @@ namespace MassTransit.QuartzIntegration.Tests.Turnout
             base.ConfigureInMemoryBus(configurator);
 
             var options = new ServiceInstanceOptions()
-                .EnableInstanceEndpoint()
                 .SetEndpointNameFormatter(KebabCaseEndpointNameFormatter.Instance);
 
             configurator.ServiceInstance(options, instance =>

@@ -178,7 +178,7 @@ namespace MassTransit.Courier
             ExceptionInfo exceptionInfo, IDictionary<string, object> variables, IDictionary<string, object> data)
         {
             var activityTask = PublishEvent<RoutingSlipActivityCompensationFailed>(RoutingSlipEvents.ActivityCompensationFailed,
-                contents => new ActivityCompensationFailed(
+                contents => new RoutingSlipActivityCompensationFailedMessage(
                     _host,
                     _routingSlip.TrackingNumber,
                     activityName,
@@ -194,7 +194,7 @@ namespace MassTransit.Courier
                         : EmptyObject));
 
             var slipTask = PublishEvent<RoutingSlipCompensationFailed>(RoutingSlipEvents.CompensationFailed,
-                contents => new CompensationFailed(
+                contents => new RoutingSlipCompensationFailedMessage(
                     _host,
                     _routingSlip.TrackingNumber,
                     failureTimestamp,

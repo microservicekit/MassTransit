@@ -44,6 +44,10 @@
 
                         break;
 
+                    case Uri value:
+                        dictionary[header.Key] = value.ToString();
+                        break;
+
                     case string s:
                         dictionary[header.Key] = s;
                         break;
@@ -61,9 +65,7 @@
                 }
 
                 if (header.Key == "AMQ_SCHEDULED_DELAY")
-                {
                     headers.Set(header.Key, null);
-                }
             }
         }
     }

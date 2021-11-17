@@ -19,7 +19,7 @@ namespace MassTransit.AmazonSqsTransport.Topology.Topologies
         readonly IList<IAmazonSqsConsumeTopologySpecification> _specifications;
 
         public AmazonSqsConsumeTopology(IMessageTopology messageTopology, IAmazonSqsPublishTopology publishTopology)
-            : base(80)
+            : base(72)
         {
             _messageTopology = messageTopology;
             _publishTopology = publishTopology;
@@ -55,7 +55,7 @@ namespace MassTransit.AmazonSqsTransport.Topology.Topologies
 
         public void Bind(string topicName, Action<ITopicSubscriptionConfigurator> configure = null)
         {
-            var specification = new ConsumerConsumeTopologySpecification(topicName);
+            var specification = new ConsumerConsumeTopologySpecification(_publishTopology, topicName);
 
             configure?.Invoke(specification);
 
@@ -69,7 +69,7 @@ namespace MassTransit.AmazonSqsTransport.Topology.Topologies
 
         protected override IMessageConsumeTopologyConfigurator CreateMessageTopology<T>(Type type)
         {
-            var messageTopology = new AmazonSqsMessageConsumeTopology<T>(_messageTopology.GetMessageTopology<T>(), _publishTopology.GetMessageTopology<T>());
+            var messageTopology = new AmazonSqsMessageConsumeTopology<T>(_messageTopology.GetMessageTopology<T>(), _publishTopology);
 
             OnMessageTopologyCreated(messageTopology);
 

@@ -2,9 +2,8 @@
 {
     using System;
     using System.Collections.Generic;
+    using global::Azure.Messaging.ServiceBus.Administration;
     using GreenPipes;
-    using Microsoft.Azure.ServiceBus;
-    using Microsoft.Azure.ServiceBus.Management;
 
 
     public class SubscriptionConfigurator :
@@ -19,8 +18,8 @@
 
         public bool? EnableDeadLetteringOnFilterEvaluationExceptions { private get; set; }
 
-        public Filter Filter { get; set; }
-        public RuleDescription Rule { get; set; }
+        public RuleFilter Filter { get; set; }
+        public CreateRuleOptions Rule { get; set; }
 
         public string ForwardTo { private get; set; }
 
@@ -43,44 +42,44 @@
                 yield return this.Failure("Rule/Filter", "only a rule or a filter may be specified");
         }
 
-        public SubscriptionDescription GetSubscriptionDescription()
+        public CreateSubscriptionOptions GetCreateSubscriptionOptions()
         {
-            var description = new SubscriptionDescription(TopicPath, SubscriptionName);
+            var options = new CreateSubscriptionOptions(TopicPath, SubscriptionName);
 
             if (AutoDeleteOnIdle.HasValue)
-                description.AutoDeleteOnIdle = AutoDeleteOnIdle.Value;
+                options.AutoDeleteOnIdle = AutoDeleteOnIdle.Value;
 
             if (DefaultMessageTimeToLive.HasValue)
-                description.DefaultMessageTimeToLive = DefaultMessageTimeToLive.Value;
+                options.DefaultMessageTimeToLive = DefaultMessageTimeToLive.Value;
 
             if (EnableBatchedOperations.HasValue)
-                description.EnableBatchedOperations = EnableBatchedOperations.Value;
+                options.EnableBatchedOperations = EnableBatchedOperations.Value;
 
             if (EnableDeadLetteringOnFilterEvaluationExceptions.HasValue)
-                description.EnableDeadLetteringOnFilterEvaluationExceptions = EnableDeadLetteringOnFilterEvaluationExceptions.Value;
+                options.EnableDeadLetteringOnFilterEvaluationExceptions = EnableDeadLetteringOnFilterEvaluationExceptions.Value;
 
             if (EnableDeadLetteringOnMessageExpiration.HasValue)
-                description.EnableDeadLetteringOnMessageExpiration = EnableDeadLetteringOnMessageExpiration.Value;
+                options.DeadLetteringOnMessageExpiration = EnableDeadLetteringOnMessageExpiration.Value;
 
             if (!string.IsNullOrWhiteSpace(ForwardDeadLetteredMessagesTo))
-                description.ForwardDeadLetteredMessagesTo = ForwardDeadLetteredMessagesTo;
+                options.ForwardDeadLetteredMessagesTo = ForwardDeadLetteredMessagesTo;
 
             if (!string.IsNullOrWhiteSpace(ForwardTo))
-                description.ForwardTo = ForwardTo;
+                options.ForwardTo = ForwardTo;
 
             if (LockDuration.HasValue)
-                description.LockDuration = LockDuration.Value;
+                options.LockDuration = LockDuration.Value;
 
             if (MaxDeliveryCount.HasValue)
-                description.MaxDeliveryCount = MaxDeliveryCount.Value;
+                options.MaxDeliveryCount = MaxDeliveryCount.Value;
 
             if (RequiresSession.HasValue)
-                description.RequiresSession = RequiresSession.Value;
+                options.RequiresSession = RequiresSession.Value;
 
             if (!string.IsNullOrWhiteSpace(UserMetadata))
-                description.UserMetadata = UserMetadata;
+                options.UserMetadata = UserMetadata;
 
-            return description;
+            return options;
         }
     }
 }

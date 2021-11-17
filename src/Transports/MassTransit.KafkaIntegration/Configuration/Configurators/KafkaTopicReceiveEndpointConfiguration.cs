@@ -41,12 +41,14 @@ namespace MassTransit.KafkaIntegration.Configurators
             _options = new OptionsSet();
             Topic = topic;
 
+            if (!SerializationUtils.DeSerializers.IsDefaultKeyType<TKey>())
+                SetKeyDeserializer(new MassTransitJsonDeserializer<TKey>());
             SetValueDeserializer(new MassTransitJsonDeserializer<TValue>());
-            SetKeyDeserializer(new MassTransitJsonDeserializer<TKey>());
             SetHeadersDeserializer(headersDeserializer);
 
             CheckpointInterval = TimeSpan.FromMinutes(1);
             CheckpointMessageCount = 5000;
+            MessageLimit = 10000;
             ConcurrencyLimit = 1;
 
             _consumerConfigurator = new PipeConfigurator<ConsumerContext<TKey, TValue>>();
@@ -170,6 +172,7 @@ namespace MassTransit.KafkaIntegration.Configurators
         }
 
         public string Topic { get; }
+        public ushort MessageLimit { get; set; }
 
         public ushort CheckpointMessageCount { set; get; }
 

@@ -4,16 +4,16 @@ namespace MassTransit.Azure.ServiceBus.Core.Transport
     using System.Threading.Tasks;
     using Context;
     using Contexts;
-    using Microsoft.Azure.ServiceBus;
+    using global::Azure.Messaging.ServiceBus;
 
 
     public class SessionReceiver :
         Receiver
     {
         readonly ClientContext _context;
-        readonly IBrokeredMessageReceiver _messageReceiver;
+        readonly IServiceBusMessageReceiver _messageReceiver;
 
-        public SessionReceiver(ClientContext context, IBrokeredMessageReceiver messageReceiver)
+        public SessionReceiver(ClientContext context, IServiceBusMessageReceiver messageReceiver)
             : base(context, messageReceiver)
         {
             _context = context;
@@ -26,10 +26,10 @@ namespace MassTransit.Azure.ServiceBus.Core.Transport
 
             SetReady();
 
-            return Task.CompletedTask;
+            return _context.StartAsync();
         }
 
-        async Task OnSession(IMessageSession messageSession, Message message, CancellationToken cancellationToken)
+        async Task OnSession(ProcessSessionMessageEventArgs messageSession, ServiceBusReceivedMessage message, CancellationToken cancellationToken)
         {
             LogContext.Debug?.Log("Receiving {SessionId}:{MessageId}({EntityPath})", message.SessionId, message.MessageId, _context.EntityPath);
 
@@ -37,10 +37,10 @@ namespace MassTransit.Azure.ServiceBus.Core.Transport
                 .ConfigureAwait(false);
         }
 
-        void AddReceiveContextPayloads(ReceiveContext receiveContext, IMessageSession messageSession, Message message)
+        void AddReceiveContextPayloads(ReceiveContext receiveContext, ProcessSessionMessageEventArgs messageSession, ServiceBusReceivedMessage message)
         {
-            MessageSessionContext sessionContext = new BrokeredMessageSessionContext(messageSession);
-            MessageLockContext lockContext = new SessionMessageLockContext(messageSession, message);
+            MessageSessionContext sessionContext = new ServiceBusMessageSessionContext(messageSession);
+            MessageLockContext lockContext = new ServiceBusSessionMessageLockContext(messageSession, message);
 
             receiveContext.GetOrAddPayload(() => sessionContext);
             receiveContext.GetOrAddPayload(() => lockContext);

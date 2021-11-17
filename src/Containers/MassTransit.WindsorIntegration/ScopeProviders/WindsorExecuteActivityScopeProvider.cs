@@ -1,6 +1,7 @@
 namespace MassTransit.WindsorIntegration.ScopeProviders
 {
     using System;
+    using System.Threading.Tasks;
     using Castle.MicroKernel;
     using Courier;
     using Courier.Contexts;
@@ -21,7 +22,7 @@ namespace MassTransit.WindsorIntegration.ScopeProviders
             _kernel = kernel;
         }
 
-        public IExecuteActivityScopeContext<TActivity, TArguments> GetScope(ExecuteContext<TArguments> context)
+        public ValueTask<IExecuteActivityScopeContext<TActivity, TArguments>> GetScope(ExecuteContext<TArguments> context)
         {
             if (context.TryGetPayload<IKernel>(out var kernel))
             {
@@ -31,7 +32,8 @@ namespace MassTransit.WindsorIntegration.ScopeProviders
 
                 ExecuteActivityContext<TActivity, TArguments> activityContext = context.CreateActivityContext(activity);
 
-                return new ExistingExecuteActivityScopeContext<TActivity, TArguments>(activityContext, ReleaseComponent);
+                return new ValueTask<IExecuteActivityScopeContext<TActivity, TArguments>>(
+                    new ExistingExecuteActivityScopeContext<TActivity, TArguments>(activityContext, ReleaseComponent));
             }
 
             var scope = _kernel.CreateNewOrUseExistingMessageScope();
@@ -45,7 +47,8 @@ namespace MassTransit.WindsorIntegration.ScopeProviders
 
                 ExecuteActivityContext<TActivity, TArguments> activityContext = scopeContext.CreateActivityContext(activity);
 
-                return new CreatedExecuteActivityScopeContext<IDisposable, TActivity, TArguments>(scope, activityContext, ReleaseComponent);
+                return new ValueTask<IExecuteActivityScopeContext<TActivity, TArguments>>(
+                    new CreatedExecuteActivityScopeContext<IDisposable, TActivity, TArguments>(scope, activityContext, ReleaseComponent));
             }
             catch
             {

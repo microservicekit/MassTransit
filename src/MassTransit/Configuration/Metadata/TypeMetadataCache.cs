@@ -9,9 +9,11 @@
     using Automatonymous;
     using Courier;
     using Definition;
+    using Futures;
     using GreenPipes.Internals.Extensions;
     using Internals.Extensions;
     using JobService;
+    using Registration;
     using Saga;
 
 
@@ -115,6 +117,19 @@
                 || Internals.Extensions.InterfaceExtensions.HasInterface(t, typeof(ICompensateActivity<>))
                 || Internals.Extensions.InterfaceExtensions.HasInterface(t, typeof(IActivityDefinition<,,>))
                 || Internals.Extensions.InterfaceExtensions.HasInterface(t, typeof(IExecuteActivityDefinition<,>)));
+        }
+
+        /// <summary>
+        /// Returns true if the type is a future or future definition
+        /// </summary>
+        /// <param name="type"></param>
+        /// <returns></returns>
+        public static bool IsFutureOrDefinition(Type type)
+        {
+            Type[] interfaces = type.GetTypeInfo().GetInterfaces();
+
+            return interfaces.Any(t => Internals.Extensions.InterfaceExtensions.HasInterface(t, typeof(SagaStateMachine<FutureState>))
+                || Internals.Extensions.InterfaceExtensions.HasInterface(t, typeof(IFutureDefinition<>)));
         }
 
         public static bool HasSagaInterfaces(Type type)
@@ -284,7 +299,7 @@
                 if (typeDefinition == typeof(CorrelatedBy<>))
                 {
                     _invalidMessageTypeReason =
-                        $"CorrelatedBy<{typeof(T).GetClosingArgument(typeof(CorrelatedBy<>)).Name} is not a valid message type";
+                        $"CorrelatedBy<{typeof(T).GetClosingArgument(typeof(CorrelatedBy<>)).Name}> is not a valid message type";
 
                     return false;
                 }
@@ -292,7 +307,7 @@
                 if (typeDefinition == typeof(Orchestrates<>))
                 {
                     _invalidMessageTypeReason =
-                        $"Orchestrates<{typeof(T).GetClosingArgument(typeof(Orchestrates<>)).Name} is not a valid message type";
+                        $"Orchestrates<{typeof(T).GetClosingArgument(typeof(Orchestrates<>)).Name}> is not a valid message type";
 
                     return false;
                 }
@@ -300,7 +315,7 @@
                 if (typeDefinition == typeof(InitiatedBy<>))
                 {
                     _invalidMessageTypeReason =
-                        $"InitiatedBy<{typeof(T).GetClosingArgument(typeof(InitiatedBy<>)).Name} is not a valid message type";
+                        $"InitiatedBy<{typeof(T).GetClosingArgument(typeof(InitiatedBy<>)).Name}> is not a valid message type";
 
                     return false;
                 }
@@ -308,7 +323,7 @@
                 if (typeDefinition == typeof(InitiatedByOrOrchestrates<>))
                 {
                     _invalidMessageTypeReason =
-                        $"InitiatedByOrOrchestrates<{typeof(T).GetClosingArgument(typeof(InitiatedByOrOrchestrates<>)).Name} is not a valid message type";
+                        $"InitiatedByOrOrchestrates<{typeof(T).GetClosingArgument(typeof(InitiatedByOrOrchestrates<>)).Name}> is not a valid message type";
 
                     return false;
                 }
@@ -316,7 +331,7 @@
                 if (typeDefinition == typeof(Observes<,>))
                 {
                     Type[] closingArguments = Internals.Extensions.InterfaceExtensions.GetClosingArguments(typeof(T), typeof(Observes<,>)).ToArray();
-                    _invalidMessageTypeReason = $"Observes<{closingArguments[0].Name},{closingArguments[1].Name} is not a valid message type";
+                    _invalidMessageTypeReason = $"Observes<{closingArguments[0].Name},{closingArguments[1].Name}> is not a valid message type";
                     return false;
                 }
 

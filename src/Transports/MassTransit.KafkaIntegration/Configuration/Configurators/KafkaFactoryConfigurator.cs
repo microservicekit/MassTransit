@@ -152,11 +152,6 @@ namespace MassTransit.KafkaIntegration.Configurators
             set => _clientConfig.MaxInFlight = value;
         }
 
-        public TimeSpan? MetadataRequestTimeout
-        {
-            set => _clientConfig.MetadataRequestTimeoutMs = value?.Milliseconds;
-        }
-
         public TimeSpan? TopicMetadataRefreshInterval
         {
             set => _clientConfig.TopicMetadataRefreshIntervalMs = value?.Milliseconds;
@@ -293,6 +288,8 @@ namespace MassTransit.KafkaIntegration.Configurators
 
         public IKafkaRider Build(IRiderRegistrationContext context, IBusInstance busInstance)
         {
+            ConnectSendObserver(busInstance.HostConfiguration.SendObservers);
+
             var endpoints = new ReceiveEndpointCollection();
             foreach (var topic in _topics)
                 endpoints.Add(topic.EndpointName, topic.CreateReceiveEndpoint(busInstance));

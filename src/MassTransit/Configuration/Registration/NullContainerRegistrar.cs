@@ -4,6 +4,7 @@ namespace MassTransit.Registration
     using Automatonymous;
     using Courier;
     using Definition;
+    using Futures;
     using Saga;
 
 
@@ -80,6 +81,17 @@ namespace MassTransit.Registration
         {
         }
 
+        public void RegisterFuture<TFuture>()
+            where TFuture : MassTransitStateMachine<FutureState>
+        {
+        }
+
+        public void RegisterFutureDefinition<TDefinition, TFuture>()
+            where TDefinition : class, IFutureDefinition<TFuture>
+            where TFuture : MassTransitStateMachine<FutureState>
+        {
+        }
+
         public void RegisterRequestClient<T>(RequestTimeout timeout = default)
             where T : class
         {
@@ -87,6 +99,10 @@ namespace MassTransit.Registration
 
         public void RegisterRequestClient<T>(Uri destinationAddress, RequestTimeout timeout = default)
             where T : class
+        {
+        }
+
+        public void RegisterScopedClientFactory()
         {
         }
 

@@ -79,7 +79,7 @@ This results in the following values: 0 - None, 1 - Initial, 2 - Final, 3 - Subm
 
 ### State
 
-States represent previously consumed events resulting in an instance being in a current _state_. An instance can only be in one state at a given time. A new instance defaults to the _Initial_ state, which is automatically defined. The _Final_ state is also defined for all state machines and is used to signfify the instance has reached the final state.
+States represent previously consumed events resulting in an instance being in a current _state_. An instance can only be in one state at a given time. A new instance defaults to the _Initial_ state, which is automatically defined. The _Final_ state is also defined for all state machines and is used to signify the instance has reached the final state.
 
 In the example, two states are declared. States are automatically initialized by the _MassTransitStateMachine_ base class constructor.
 
@@ -794,6 +794,95 @@ public class OrderStateMachine :
 
     public State Canceled { get; private set; }
     public Event<RequestOrderCancellation> OrderCancellationRequested { get; private set; }
+}
+```
+
+There are scenarios where it is required to _wait_ for the response from the state machine. In these scenarios the information that is required to respond to the original request should be stored. 
+
+```cs
+public record CreateOrder(Guid CorrelationId) : CorrelatedBy<Guid>;
+
+public record ProcessOrder(Guid OrderId, Guid ProcessingId);
+
+public record OrderProcessed(Guid OrderId, Guid ProcessingId);
+
+public record OrderCancelled(Guid OrderId, string Reason);
+
+public class ProcessOrderConsumer : IConsumer<ProcessOrder>
+{
+    public async Task Consume(ConsumeContext<ProcessOrder> context)
+    {
+        await context.RespondAsync(new OrderProcessed(context.Message.OrderId, context.Message.ProcessingId));
+    }
+}
+
+public class OrderState : SagaStateMachineInstance
+{
+    public Guid CorrelationId { get; set; }
+    public string CurrentState { get; set; }
+    public Guid? ProcessingId { get; set; }
+    public Guid? RequestId { get; set; }
+    public Uri ResponseAddress { get; set; }
+    public Guid OrderId { get; set; }
+}
+
+public class OrderStateMachine : MassTransitStateMachine<OrderState>
+{
+    public State Created { get; set; }
+    
+    public State Cancelled { get; set; }
+    
+    public Event<CreateOrder> OrderSubmitted { get; set; }
+    
+    public Request<OrderState, ProcessOrder, OrderProcessed> ProcessOrder { get; set; }
+    
+    public OrderStateMachine()
+    {
+        InstanceState(m => m.CurrentState);
+        Event(() => OrderSubmitted);
+        Request(() => ProcessOrder, order => order.ProcessingId, config => { config.Timeout = TimeSpan.Zero; });
+
+        Initially(
+            When(OrderSubmitted)
+                .Then(context =>
+                {
+                    context.Instance.CorrelationId = context.Data.CorrelationId;
+                    context.Instance.ProcessingId = Guid.NewGuid();
+
+                    context.Instance.OrderId = Guid.NewGuid();
+
+                    if (!context.TryGetPayload(out SagaConsumeContext<OrderState, CreateOrder> payload))
+                        throw new Exception("Unable to retrieve required payload for callback data.");
+
+                    context.Instance.RequestId = payload.RequestId;
+                    context.Instance.ResponseAddress = payload.ResponseAddress;
+                })
+                .Request(ProcessOrder, context => new ProcessOrder(context.Instance.OrderId, context.Instance.ProcessingId!.Value))
+                .TransitionTo(ProcessOrder.Pending));
+        
+        During(ProcessOrder.Pending,
+            When(ProcessOrder.Completed)
+                .TransitionTo(Created)
+                .ThenAsync(async context =>
+                {
+                    var endpoint = await context.GetSendEndpoint(context.Instance.ResponseAddress);
+                    await endpoint.Send(context.Instance, r => r.RequestId = context.Instance.RequestId);
+                }),
+            When(ProcessOrder.Faulted)
+                .TransitionTo(Cancelled)
+                .ThenAsync(async context =>
+                {
+                    var endpoint = await context.GetSendEndpoint(context.Instance.ResponseAddress);
+                    await endpoint.Send(new OrderCancelled(context.Instance.OrderId, "Faulted"), r => r.RequestId = context.Instance.RequestId);
+                }),
+            When(ProcessOrder.TimeoutExpired)
+                .TransitionTo(Cancelled)
+                .ThenAsync(async context =>
+                {
+                    var endpoint = await context.GetSendEndpoint(context.Instance.ResponseAddress);
+                    await endpoint.Send(new OrderCancelled(context.Instance.OrderId, "Time-out"), r => r.RequestId = context.Instance.RequestId);
+                }));
+    }
 }
 ```
 

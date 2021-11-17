@@ -16,25 +16,22 @@ namespace MassTransit.JobService.Configuration
         where TJob : class
         where TConsumer : class, IJobConsumer<TJob>
     {
-        readonly IConsumerSpecification<SubmitJobConsumer<TJob>> _submitJobSpecification;
-        readonly IConsumerSpecification<StartJobConsumer<TJob>> _startJobSpecification;
-        readonly IConsumerSpecification<SuperviseJobConsumer> _superviseJobSpecification;
         readonly ConsumerMessageSpecification<TConsumer, TJob> _consumerSpecification;
 
         public JobConsumerMessageSpecification()
         {
-            _submitJobSpecification = ConsumerConnectorCache<SubmitJobConsumer<TJob>>.Connector.CreateConsumerSpecification<SubmitJobConsumer<TJob>>();
-            _startJobSpecification = ConsumerConnectorCache<StartJobConsumer<TJob>>.Connector.CreateConsumerSpecification<StartJobConsumer<TJob>>();
-            _superviseJobSpecification = ConsumerConnectorCache<SuperviseJobConsumer>.Connector.CreateConsumerSpecification<SuperviseJobConsumer>();
+            SubmitJobSpecification = ConsumerConnectorCache<SubmitJobConsumer<TJob>>.Connector.CreateConsumerSpecification<SubmitJobConsumer<TJob>>();
+            StartJobSpecification = ConsumerConnectorCache<StartJobConsumer<TJob>>.Connector.CreateConsumerSpecification<StartJobConsumer<TJob>>();
+            FinalizeJobSpecification = ConsumerConnectorCache<FinalizeJobConsumer<TJob>>.Connector.CreateConsumerSpecification<FinalizeJobConsumer<TJob>>();
+            SuperviseJobSpecification = ConsumerConnectorCache<SuperviseJobConsumer>.Connector.CreateConsumerSpecification<SuperviseJobConsumer>();
 
             _consumerSpecification = new ConsumerMessageSpecification<TConsumer, TJob>();
         }
 
-        public IConsumerSpecification<SubmitJobConsumer<TJob>> SubmitJobSpecification => _submitJobSpecification;
-
-        public IConsumerSpecification<StartJobConsumer<TJob>> StartJobSpecification => _startJobSpecification;
-
-        public IConsumerSpecification<SuperviseJobConsumer> SuperviseJobSpecification => _superviseJobSpecification;
+        public IConsumerSpecification<SubmitJobConsumer<TJob>> SubmitJobSpecification { get; }
+        public IConsumerSpecification<StartJobConsumer<TJob>> StartJobSpecification { get; }
+        public IConsumerSpecification<FinalizeJobConsumer<TJob>> FinalizeJobSpecification { get; }
+        public IConsumerSpecification<SuperviseJobConsumer> SuperviseJobSpecification { get; }
 
         public void AddPipeSpecification(IPipeSpecification<ConsumerConsumeContext<TConsumer, TJob>> specification)
         {
@@ -49,9 +46,10 @@ namespace MassTransit.JobService.Configuration
         public IEnumerable<ValidationResult> Validate()
         {
             return _consumerSpecification.Validate()
-                .Concat(_superviseJobSpecification.Validate())
-                .Concat(_startJobSpecification.Validate())
-                .Concat(_submitJobSpecification.Validate());
+                .Concat(SuperviseJobSpecification.Validate())
+                .Concat(StartJobSpecification.Validate())
+                .Concat(FinalizeJobSpecification.Validate())
+                .Concat(SubmitJobSpecification.Validate());
         }
 
         public Type MessageType => typeof(TJob);
@@ -87,9 +85,10 @@ namespace MassTransit.JobService.Configuration
         public ConnectHandle ConnectConsumerConfigurationObserver(IConsumerConfigurationObserver observer)
         {
             return new MultipleConnectHandle(_consumerSpecification.ConnectConsumerConfigurationObserver(observer),
-                _superviseJobSpecification.ConnectConsumerConfigurationObserver(observer),
-                _startJobSpecification.ConnectConsumerConfigurationObserver(observer),
-                _submitJobSpecification.ConnectConsumerConfigurationObserver(observer));
+                SuperviseJobSpecification.ConnectConsumerConfigurationObserver(observer),
+                StartJobSpecification.ConnectConsumerConfigurationObserver(observer),
+                FinalizeJobSpecification.ConnectConsumerConfigurationObserver(observer),
+                SubmitJobSpecification.ConnectConsumerConfigurationObserver(observer));
         }
     }
 }

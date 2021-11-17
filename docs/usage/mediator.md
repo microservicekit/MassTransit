@@ -49,3 +49,110 @@ To configure mediator using a container, use the _AddMediator_ method.
 <<< @/docs/code/usage/UsageMediatorContainer.cs
 
 Consumers and sagas (including saga repositories) can be added, routing slip activities are not supported using mediator. Consumer and saga definitions are supported as well, but certain properties like _EndpointName_ are ignored. Middleware components, including _UseMessageRetry_ and _UseInMemoryOutbox_, are fully supported.
+
+### Middleware
+
+MassTransit Mediator is built using the same components used to create a bus, which means all the same middleware components can be configured. For instance, to configure the Mediator pipeline, such as adding a scoped filter, see the example below.
+
+<<< @/docs/code/usage/UsageMediatorConfigure.cs
+
+### HTTP Context Scope
+
+A common question lately has been around the use of MassTransit's Mediator with ASP.NET Core, specifically the scope created for controllers. In cases where it is desirable to use the same scope for Mediator consumers that was created by the controller, the `HttpContextScopeAccessor` can be used as shown below.
+
+First, to configure the scope accessor, add the following to the services configuration:
+
+```cs
+services.AddHttpContextAccessor();
+
+services.AddMediator(configurator =>
+{
+    configurator.AddConsumer<SampleMessageConsumer>();
+
+    configurator.ConfigureMediator((context, cfg) => cfg.UseHttpContextScopeFilter(context));
+});
+```
+
+The `UseHttpContextScopeFilter` is an extension method that needs to be added to the project:
+
+```cs
+public static class MediatorHttpContextScopeFilterExtensions
+{
+    public static void UseHttpContextScopeFilter(this IMediatorConfigurator configurator, IServiceProvider serviceProvider)
+    {
+        var filter = new HttpContextScopeFilter(serviceProvider.GetRequiredService<IHttpContextAccessor>());
+
+        configurator.ConfigurePublish(x => x.UseFilter(filter));
+        configurator.ConfigureSend(x => x.UseFilter(filter));
+        configurator.UseFilter(filter);
+    }
+}
+```
+
+The extension method uses the `HttpContextScopeFilter`, shown below, which also needs to be added to the project:
+
+```cs
+public class HttpContextScopeFilter :
+    IFilter<PublishContext>,
+    IFilter<SendContext>,
+    IFilter<ConsumeContext>
+{
+    private readonly IHttpContextAccessor _httpContextAccessor;
+
+    public HttpContextScopeFilter(IHttpContextAccessor httpContextAccessor)
+    {
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    private void AddPayload(PipeContext context)
+    {
+        if (_httpContextAccessor.HttpContext == null)
+            return;
+
+        var serviceProvider = _httpContextAccessor.HttpContext.RequestServices;
+        context.GetOrAddPayload(() => serviceProvider);
+        context.GetOrAddPayload<IServiceScope>(() => new NoopScope(serviceProvider));
+    }
+
+    public Task Send(PublishContext context, IPipe<PublishContext> next)
+    {
+        AddPayload(context);
+        return next.Send(context);
+    }
+
+    public Task Send(SendContext context, IPipe<SendContext> next)
+    {
+        AddPayload(context);
+        return next.Send(context);
+    }
+
+    public Task Send(ConsumeContext context, IPipe<ConsumeContext> next)
+    {
+        AddPayload(context);
+        return next.Send(context);
+    }
+
+    public void Probe(ProbeContext context)
+    {
+    }
+
+    private class NoopScope :
+        IServiceScope
+    {
+        public NoopScope(IServiceProvider serviceProvider)
+        {
+            ServiceProvider = serviceProvider;
+        }
+
+        public void Dispose()
+        {
+        }
+
+        public IServiceProvider ServiceProvider { get; }
+    }
+}
+```
+
+Once the above have been added, the controller scope will be passed through the mediator send and consume filters so that the controller scope is used for the consumers.
+
+

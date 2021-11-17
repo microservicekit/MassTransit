@@ -1,6 +1,7 @@
 ﻿namespace MassTransit.Transports.InMemory.Fabric
 {
     using System;
+    using System.Threading;
     using System.Threading.Tasks;
     using GreenPipes;
     using GreenPipes.Internals.Extensions;
@@ -15,6 +16,7 @@
         readonly Connectable<IInMemoryQueueConsumer> _consumers;
         readonly ChannelExecutor _executor;
         readonly string _name;
+        readonly CancellationTokenSource _source;
 
         public InMemoryQueue(string name, int concurrencyLevel)
         {
@@ -22,6 +24,7 @@
 
             _consumers = new Connectable<IInMemoryQueueConsumer>();
             _consumer = Util.TaskUtil.GetTask<IInMemoryQueueConsumer>();
+            _source = new CancellationTokenSource();
 
             _executor = new ChannelExecutor(concurrencyLevel, false);
         }
@@ -51,25 +54,38 @@
                     : _executor.Push(() => DispatchMessage(context), context.CancellationToken);
         }
 
-        public ValueTask DisposeAsync()
+        public async ValueTask DisposeAsync()
         {
-            return _executor.DisposeAsync();
+            _source.Cancel();
+
+            await _executor.DisposeAsync().ConfigureAwait(false);
         }
 
-        async Task DeliverWithDelay(DeliveryContext<InMemoryTransportMessage> context)
+        Task DeliverWithDelay(DeliveryContext<InMemoryTransportMessage> context)
         {
-            await Task.Delay(context.Message.Delay.Value, context.CancellationToken).ConfigureAwait(false);
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(context.Message.Delay.Value, _source.Token).ConfigureAwait(false);
 
-            await _executor.Push(() => DispatchMessage(context), context.CancellationToken).ConfigureAwait(false);
+                    await _executor.Push(() => DispatchMessage(context), _source.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }, context.CancellationToken);
+
+            return Task.CompletedTask;
         }
 
         async Task DispatchMessage(DeliveryContext<InMemoryTransportMessage> context)
         {
-            await _consumer.Task.OrCanceled(context.CancellationToken).ConfigureAwait(false);
+            await _consumer.Task.OrCanceled(_source.Token).ConfigureAwait(false);
 
             try
             {
-                await _consumers.ForEachAsync(x => x.Consume(context.Message, context.CancellationToken)).ConfigureAwait(false);
+                await _consumers.ForEachAsync(x => x.Consume(context.Message, _source.Token)).ConfigureAwait(false);
             }
             // ReSharper disable once EmptyGeneralCatchClause
             catch

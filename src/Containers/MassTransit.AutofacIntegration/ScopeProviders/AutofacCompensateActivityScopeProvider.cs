@@ -1,11 +1,13 @@
 namespace MassTransit.AutofacIntegration.ScopeProviders
 {
     using System;
+    using System.Threading.Tasks;
     using Autofac;
     using Courier;
     using GreenPipes;
     using Scoping;
     using Scoping.CourierContexts;
+    using Util;
 
 
     public class AutofacCompensateActivityScopeProvider<TActivity, TLog> :
@@ -25,7 +27,7 @@ namespace MassTransit.AutofacIntegration.ScopeProviders
             _configureScope = configureScope;
         }
 
-        public ICompensateActivityScopeContext<TActivity, TLog> GetScope(CompensateContext<TLog> context)
+        public ValueTask<ICompensateActivityScopeContext<TActivity, TLog>> GetScope(CompensateContext<TLog> context)
         {
             if (context.TryGetPayload<ILifetimeScope>(out var existingLifetimeScope))
             {
@@ -33,7 +35,8 @@ namespace MassTransit.AutofacIntegration.ScopeProviders
 
                 CompensateActivityContext<TActivity, TLog> activityContext = context.CreateActivityContext(activity);
 
-                return new ExistingCompensateActivityScopeContext<TActivity, TLog>(activityContext);
+                return new ValueTask<ICompensateActivityScopeContext<TActivity, TLog>>(
+                    new ExistingCompensateActivityScopeContext<TActivity, TLog>(activityContext));
             }
 
             var parentLifetimeScope = _scopeProvider.GetLifetimeScope(context);
@@ -52,13 +55,12 @@ namespace MassTransit.AutofacIntegration.ScopeProviders
 
                 CompensateActivityContext<TActivity, TLog> activityContext = compensateContext.CreateActivityContext(activity);
 
-                return new CreatedCompensateActivityScopeContext<ILifetimeScope, TActivity, TLog>(lifetimeScope, activityContext);
+                return new ValueTask<ICompensateActivityScopeContext<TActivity, TLog>>(
+                    new CreatedCompensateActivityScopeContext<ILifetimeScope, TActivity, TLog>(lifetimeScope, activityContext));
             }
-            catch
+            catch (Exception ex)
             {
-                lifetimeScope.Dispose();
-
-                throw;
+                return ex.DisposeAsync<ICompensateActivityScopeContext<TActivity, TLog>>(() => lifetimeScope.DisposeAsync());
             }
         }
 

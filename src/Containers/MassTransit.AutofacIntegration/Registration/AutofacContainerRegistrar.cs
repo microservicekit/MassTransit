@@ -6,6 +6,7 @@ namespace MassTransit.AutofacIntegration.Registration
     using Clients;
     using Courier;
     using Definition;
+    using Futures;
     using MassTransit.Registration;
     using Mediator;
     using Saga;
@@ -126,6 +127,22 @@ namespace MassTransit.AutofacIntegration.Registration
                 _builder.RegisterInstance(settings);
         }
 
+        public void RegisterFuture<TFuture>()
+            where TFuture : MassTransitStateMachine<FutureState>
+        {
+            _builder.RegisterType<TFuture>()
+                .AsSelf()
+                .SingleInstance();
+        }
+
+        public void RegisterFutureDefinition<TDefinition, TFuture>()
+            where TDefinition : class, IFutureDefinition<TFuture>
+            where TFuture : MassTransitStateMachine<FutureState>
+        {
+            _builder.RegisterType<TDefinition>()
+                .As<IFutureDefinition<TFuture>>();
+        }
+
         public void RegisterRequestClient<T>(RequestTimeout timeout = default)
             where T : class
         {
@@ -153,6 +170,19 @@ namespace MassTransit.AutofacIntegration.Registration
 
                 return new ClientFactory(new ScopedClientFactoryContext<ILifetimeScope>(clientFactory, context.Resolve<ILifetimeScope>()))
                     .CreateRequestClient<T>(destinationAddress, timeout);
+            }).InstancePerLifetimeScope();
+        }
+
+        public void RegisterScopedClientFactory()
+        {
+            _builder.Register<IScopedClientFactory>(context =>
+            {
+                var clientFactory = GetClientFactory(context);
+
+                return context.TryResolve(out ConsumeContext consumeContext)
+                    ? new ScopedClientFactory(clientFactory, consumeContext)
+                    : new ScopedClientFactory(new ClientFactory(
+                        new ScopedClientFactoryContext<ILifetimeScope>(clientFactory, context.Resolve<ILifetimeScope>())), null);
             }).InstancePerLifetimeScope();
         }
 
@@ -212,6 +242,21 @@ namespace MassTransit.AutofacIntegration.Registration
         protected virtual IClientFactory GetClientFactory(IComponentContext componentContext)
         {
             return componentContext.Resolve<IClientFactory>();
+        }
+    }
+
+
+    public class AutofacContainerRegistrar<TBus> :
+        AutofacContainerRegistrar
+    {
+        public AutofacContainerRegistrar(ContainerBuilder builder)
+            : base(builder)
+        {
+        }
+
+        protected override IClientFactory GetClientFactory(IComponentContext componentContext)
+        {
+            return componentContext.Resolve<Bind<TBus, IClientFactory>>().Value;
         }
     }
 

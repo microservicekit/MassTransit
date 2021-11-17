@@ -8,6 +8,7 @@ namespace MassTransit.WindsorIntegration.Registration
     using Clients;
     using Courier;
     using Definition;
+    using Futures;
     using MassTransit.Registration;
     using Mediator;
     using Saga;
@@ -139,6 +140,24 @@ namespace MassTransit.WindsorIntegration.Registration
                 Component.For<IEndpointSettings<IEndpointDefinition<T>>>().Instance(settings));
         }
 
+        public void RegisterFuture<TFuture>()
+            where TFuture : MassTransitStateMachine<FutureState>
+        {
+            _container.Register(
+                Component.For<TFuture>().LifestyleSingleton()
+            );
+        }
+
+        public void RegisterFutureDefinition<TDefinition, TFuture>()
+            where TDefinition : class, IFutureDefinition<TFuture>
+            where TFuture : MassTransitStateMachine<FutureState>
+        {
+            if (!_container.Kernel.HasComponent(typeof(IFutureDefinition<TFuture>)))
+                _container.Register(
+                    Component.For<IFutureDefinition<TFuture>>()
+                        .ImplementedBy<TDefinition>());
+        }
+
         public void RegisterRequestClient<T>(RequestTimeout timeout = default)
             where T : class
         {
@@ -168,6 +187,19 @@ namespace MassTransit.WindsorIntegration.Registration
 
                 return new ClientFactory(new ScopedClientFactoryContext<IKernel>(clientFactory, kernel))
                     .CreateRequestClient<T>(destinationAddress, timeout);
+            }));
+        }
+
+        public void RegisterScopedClientFactory()
+        {
+            _container.Register(Component.For<IScopedClientFactory>().UsingFactoryMethod(kernel =>
+            {
+                var clientFactory = GetClientFactory(kernel);
+                var consumeContext = kernel.GetConsumeContext();
+
+                return consumeContext != null
+                    ? new ScopedClientFactory(clientFactory, consumeContext)
+                    : new ScopedClientFactory(new ClientFactory(new ScopedClientFactoryContext<IKernel>(clientFactory, kernel)), null);
             }));
         }
 

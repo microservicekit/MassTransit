@@ -2,8 +2,8 @@
 {
     using System;
     using System.Threading.Tasks;
+    using Contracts.JobService;
     using GreenPipes;
-    using MassTransit.Contracts.JobService;
 
 
     public interface IJobService
@@ -25,7 +25,8 @@
         /// <summary>
         /// Shut town the job service, cancelling any pending jobs
         /// </summary>
-        Task Stop();
+        /// <param name="bus"></param>
+        Task Stop(IBus bus);
 
         bool TryGetJob(Guid jobId, out JobHandle jobReference);
 
@@ -35,5 +36,25 @@
         /// <param name="jobId"></param>
         /// <param name="jobHandle"></param>
         bool TryRemoveJob(Guid jobId, out JobHandle jobHandle);
+
+        /// <summary>
+        /// Registers a job type at bus configuration time so that the options can be announced when the bus is started/stopped
+        /// </summary>
+        /// <param name="configurator"></param>
+        /// <param name="options"></param>
+        /// <param name="jobTypeId"></param>
+        /// <typeparam name="T"></typeparam>
+        void RegisterJobType<T>(IReceiveEndpointConfigurator configurator, JobOptions<T> options, Guid jobTypeId)
+            where T : class;
+
+        Task BusStarted(IBus bus);
+
+        /// <summary>
+        /// Return the registered JobTypeId for the job type
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
+        Guid GetJobTypeId<T>()
+            where T : class;
     }
 }

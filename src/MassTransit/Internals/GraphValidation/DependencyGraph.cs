@@ -5,7 +5,7 @@ namespace MassTransit.Internals.GraphValidation
     using System.Text;
 
 
-    class DependencyGraph<T>
+    public class DependencyGraph<T>
     {
         readonly AdjacencyList<T, DependencyGraphNode<T>> _adjacencyList;
 
@@ -38,6 +38,13 @@ namespace MassTransit.Internals.GraphValidation
         public IEnumerable<T> GetItemsInOrder()
         {
             var sort = new TopologicalSort<T, DependencyGraphNode<T>>(_adjacencyList);
+
+            return sort.Result.Select(x => x.Value);
+        }
+
+        public IEnumerable<T> GetItemsInOrder(T source)
+        {
+            var sort = new TopologicalSort<T, DependencyGraphNode<T>>(_adjacencyList, source);
 
             return sort.Result.Select(x => x.Value);
         }

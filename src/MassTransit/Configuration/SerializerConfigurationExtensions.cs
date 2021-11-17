@@ -1,6 +1,7 @@
 namespace MassTransit
 {
     using System;
+    using System.Text.Json;
     using Newtonsoft.Json;
     using Serialization;
 
@@ -26,10 +27,65 @@ namespace MassTransit
         }
 
         /// <summary>
+        /// Serialize messages using the System.Text.Json serializer
+        /// </summary>
+        /// <param name="configurator"></param>
+        public static void UseSystemTextJsonSerializer(this IReceiveEndpointConfigurator configurator)
+        {
+            configurator.SetMessageSerializer(() => new SystemTextJsonMessageSerializer());
+        }
+
+        /// <summary>
+        /// Serialize messages using the System.Text.Json serializer
+        /// </summary>
+        /// <param name="configurator"></param>
+        /// <param name="configure"></param>
+        public static void UseSystemTextJsonSerializer(this IBusFactoryConfigurator configurator,
+            Func<JsonSerializerOptions, JsonSerializerOptions> configure = null)
+        {
+            if (configure != null)
+                SystemTextJsonMessageSerializer.Options = configure(SystemTextJsonMessageSerializer.Options);
+
+            configurator.SetMessageSerializer(() => new SystemTextJsonMessageSerializer());
+        }
+
+        /// <summary>
+        /// Replace the built-in message serializer with System.Text.Json (experimental, not yet recommended)
+        /// </summary>
+        /// <param name="configurator"></param>
+        /// <param name="configure"></param>
+        public static void UseSystemTextJsonOnly(this IBusFactoryConfigurator configurator,
+            Func<JsonSerializerOptions, JsonSerializerOptions> configure = null)
+        {
+            if (configure != null)
+                SystemTextJsonMessageSerializer.Options = configure(SystemTextJsonMessageSerializer.Options);
+
+            configurator.AddMessageDeserializer(JsonMessageSerializer.JsonContentType,
+                () => new SystemTextJsonMessageDeserializer(JsonMessageSerializer.JsonContentType));
+
+            configurator.SetMessageSerializer(() => new SystemTextJsonMessageSerializer(JsonMessageSerializer.JsonContentType));
+        }
+
+        /// <summary>
+        /// Replace the built-in message serializer with System.Text.Json (experimental, not yet recommended)
+        /// </summary>
+        /// <param name="configurator"></param>
+        public static void UseSystemTextJsonOnly(this IReceiveEndpointConfigurator configurator)
+        {
+            configurator.AddMessageDeserializer(JsonMessageSerializer.JsonContentType,
+                () => new SystemTextJsonMessageDeserializer(JsonMessageSerializer.JsonContentType));
+
+            configurator.SetMessageSerializer(() => new SystemTextJsonMessageSerializer(JsonMessageSerializer.JsonContentType));
+        }
+
+        /// <summary>
         /// Configure the serialization settings used to create the message serializer
         /// </summary>
         /// <param name="configurator"></param>
         /// <param name="configure"></param>
+        /// <remarks>
+        /// These settings are applied globally to <see cref="JsonMessageSerializer.SerializerSettings" />.
+        /// </remarks>
         public static void ConfigureJsonSerializer(this IBusFactoryConfigurator configurator,
             Func<JsonSerializerSettings, JsonSerializerSettings> configure)
         {
@@ -41,6 +97,9 @@ namespace MassTransit
         /// </summary>
         /// <param name="configurator"></param>
         /// <param name="configure"></param>
+        /// <remarks>
+        /// These settings are applied globally to <see cref="JsonMessageSerializer.SerializerSettings" />.
+        /// </remarks>
         public static void ConfigureJsonDeserializer(this IBusFactoryConfigurator configurator,
             Func<JsonSerializerSettings, JsonSerializerSettings> configure)
         {
@@ -52,6 +111,9 @@ namespace MassTransit
         /// </summary>
         /// <param name="configurator"></param>
         /// <param name="configure"></param>
+        /// <remarks>
+        /// These settings are applied globally to <see cref="JsonMessageSerializer.SerializerSettings" />.
+        /// </remarks>
         public static void ConfigureBsonSerializer(this IBusFactoryConfigurator configurator,
             Func<JsonSerializerSettings, JsonSerializerSettings> configure)
         {
@@ -63,6 +125,9 @@ namespace MassTransit
         /// </summary>
         /// <param name="configurator"></param>
         /// <param name="configure"></param>
+        /// <remarks>
+        /// These settings are applied globally to <see cref="JsonMessageSerializer.SerializerSettings" />.
+        /// </remarks>
         public static void ConfigureBsonDeserializer(this IBusFactoryConfigurator configurator,
             Func<JsonSerializerSettings, JsonSerializerSettings> configure)
         {
@@ -96,7 +161,7 @@ namespace MassTransit
             configurator.SetMessageSerializer(() => new RawJsonMessageSerializer());
 
             configurator.AddMessageDeserializer(RawJsonMessageSerializer.RawJsonContentType,
-                () => new RawJsonMessageDeserializer(RawJsonMessageSerializer.Deserializer));
+                () => new RawJsonMessageDeserializer(JsonMessageSerializer.Deserializer));
         }
 
         /// <summary>
@@ -106,10 +171,10 @@ namespace MassTransit
         /// <param name="options">If false, only supported messages types (read from the message headers) will be returned</param>
         public static void UseRawJsonSerializer(this IBusFactoryConfigurator configurator, RawJsonSerializerOptions options)
         {
-            configurator.SetMessageSerializer(() => new RawJsonMessageSerializer());
+            configurator.SetMessageSerializer(() => new RawJsonMessageSerializer(options));
 
             configurator.AddMessageDeserializer(RawJsonMessageSerializer.RawJsonContentType,
-                () => new RawJsonMessageDeserializer(RawJsonMessageSerializer.Deserializer, options));
+                () => new RawJsonMessageDeserializer(JsonMessageSerializer.Deserializer, options));
         }
 
         /// <summary>
@@ -121,7 +186,7 @@ namespace MassTransit
             configurator.SetMessageSerializer(() => new RawJsonMessageSerializer());
 
             configurator.AddMessageDeserializer(RawJsonMessageSerializer.RawJsonContentType,
-                () => new RawJsonMessageDeserializer(RawJsonMessageSerializer.Deserializer));
+                () => new RawJsonMessageDeserializer(JsonMessageSerializer.Deserializer));
         }
 
         /// <summary>
@@ -131,10 +196,60 @@ namespace MassTransit
         /// <param name="options">If false, only supported messages types (read from the message headers) will be returned</param>
         public static void UseRawJsonSerializer(this IReceiveEndpointConfigurator configurator, RawJsonSerializerOptions options)
         {
-            configurator.SetMessageSerializer(() => new RawJsonMessageSerializer());
+            configurator.SetMessageSerializer(() => new RawJsonMessageSerializer(options));
 
             configurator.AddMessageDeserializer(RawJsonMessageSerializer.RawJsonContentType,
-                () => new RawJsonMessageDeserializer(RawJsonMessageSerializer.Deserializer, options));
+                () => new RawJsonMessageDeserializer(JsonMessageSerializer.Deserializer, options));
+        }
+
+        /// <summary>
+        /// Serialize messages using the raw XML message serializer
+        /// </summary>
+        /// <param name="configurator"></param>
+        public static void UseRawXmlSerializer(this IBusFactoryConfigurator configurator)
+        {
+            configurator.SetMessageSerializer(() => new RawXmlMessageSerializer());
+
+            configurator.AddMessageDeserializer(RawXmlMessageSerializer.RawXmlContentType,
+                () => new RawXmlMessageDeserializer(JsonMessageSerializer.Deserializer));
+        }
+
+        /// <summary>
+        /// Serialize messages using the raw XML message serializer
+        /// </summary>
+        /// <param name="configurator"></param>
+        /// <param name="options">If false, only supported messages types (read from the message headers) will be returned</param>
+        public static void UseRawXmlSerializer(this IBusFactoryConfigurator configurator, RawSerializerOptions options)
+        {
+            configurator.SetMessageSerializer(() => new RawXmlMessageSerializer(options));
+
+            configurator.AddMessageDeserializer(RawXmlMessageSerializer.RawXmlContentType,
+                () => new RawXmlMessageDeserializer(JsonMessageSerializer.Deserializer, options));
+        }
+
+        /// <summary>
+        /// Serialize messages using the raw XML message serializer
+        /// </summary>
+        /// <param name="configurator"></param>
+        public static void UseRawXmlSerializer(this IReceiveEndpointConfigurator configurator)
+        {
+            configurator.SetMessageSerializer(() => new RawXmlMessageSerializer());
+
+            configurator.AddMessageDeserializer(RawXmlMessageSerializer.RawXmlContentType,
+                () => new RawXmlMessageDeserializer(JsonMessageSerializer.Deserializer));
+        }
+
+        /// <summary>
+        /// Serialize messages using the raw XML message serializer
+        /// </summary>
+        /// <param name="configurator"></param>
+        /// <param name="options">If false, only supported messages types (read from the message headers) will be returned</param>
+        public static void UseRawXmlSerializer(this IReceiveEndpointConfigurator configurator, RawSerializerOptions options)
+        {
+            configurator.SetMessageSerializer(() => new RawXmlMessageSerializer(options));
+
+            configurator.AddMessageDeserializer(RawXmlMessageSerializer.RawXmlContentType,
+                () => new RawXmlMessageDeserializer(JsonMessageSerializer.Deserializer, options));
         }
 
         public static void UseEncryptedSerializer(this IBusFactoryConfigurator configurator, ICryptoStreamProvider streamProvider)

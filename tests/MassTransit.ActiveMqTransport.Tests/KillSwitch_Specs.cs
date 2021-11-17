@@ -9,6 +9,7 @@ namespace MassTransit.ActiveMqTransport.Tests
     using TestFramework;
 
 
+    [Category("Flaky")]
     [TestFixture]
     public class KillSwitch_Specs :
         ActiveMqTestFixture
@@ -16,39 +17,34 @@ namespace MassTransit.ActiveMqTransport.Tests
         [Test]
         public async Task Should_be_degraded_after_too_many_exceptions()
         {
-            Assert.That(await _busHealth.WaitForHealthStatus(BusHealthStatus.Healthy, TimeSpan.FromSeconds(10)), Is.EqualTo(BusHealthStatus.Healthy));
+            Assert.That(await BusControl.WaitForHealthStatus(BusHealthStatus.Healthy, TimeSpan.FromSeconds(10)), Is.EqualTo(BusHealthStatus.Healthy));
 
-            await Task.WhenAll(Enumerable.Range(0, 20).Select(x => Bus.Publish(new BadMessage())));
+            await Task.WhenAll(Enumerable.Range(0, 11).Select(x => Bus.Publish(new BadMessage())));
 
-            Assert.That(await _busHealth.WaitForHealthStatus(BusHealthStatus.Degraded, TimeSpan.FromSeconds(15)), Is.EqualTo(BusHealthStatus.Degraded));
+            Assert.That(await BusControl.WaitForHealthStatus(BusHealthStatus.Degraded, TimeSpan.FromSeconds(15)), Is.EqualTo(BusHealthStatus.Degraded));
 
-            Assert.That(await _busHealth.WaitForHealthStatus(BusHealthStatus.Healthy, TimeSpan.FromSeconds(10)), Is.EqualTo(BusHealthStatus.Healthy));
+            Assert.That(await BusControl.WaitForHealthStatus(BusHealthStatus.Healthy, TimeSpan.FromSeconds(10)), Is.EqualTo(BusHealthStatus.Healthy));
+
+            Assert.That(await ActiveMqTestHarness.Consumed.SelectAsync<BadMessage>().Take(11).Count(), Is.EqualTo(11));
 
             await Task.WhenAll(Enumerable.Range(0, 20).Select(x => Bus.Publish(new GoodMessage())));
 
-            Assert.That(await ActiveMqTestHarness.Consumed.SelectAsync<BadMessage>().Take(20).Count(), Is.EqualTo(20));
+            await Task.Delay(1000);
 
             Assert.That(await ActiveMqTestHarness.Consumed.SelectAsync<GoodMessage>().Take(20).Count(), Is.EqualTo(20));
         }
 
-        BusHealth _busHealth;
-
         protected override void ConfigureActiveMqBus(IActiveMqBusFactoryConfigurator configurator)
         {
-            _busHealth = new BusHealth();
-
             configurator.UseKillSwitch(options => options
                 .SetActivationThreshold(10)
-                .SetTripThreshold(10)
+                .SetTripThreshold(0.1)
                 .SetRestartTimeout(s: 1));
-
-            configurator.ConnectBusObserver(_busHealth);
-            configurator.ConnectEndpointConfigurationObserver(_busHealth);
         }
 
         protected override void ConfigureActiveMqReceiveEndpoint(IActiveMqReceiveEndpointConfigurator configurator)
         {
-            configurator.PrefetchCount = 20;
+            configurator.PrefetchCount = 1;
 
             configurator.Consumer<BadConsumer>();
         }
@@ -76,12 +72,12 @@ namespace MassTransit.ActiveMqTransport.Tests
         }
 
 
-        public class GoodMessage
+        class GoodMessage
         {
         }
 
 
-        public class BadMessage
+        class BadMessage
         {
         }
     }
